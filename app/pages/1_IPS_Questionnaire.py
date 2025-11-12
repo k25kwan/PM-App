@@ -92,7 +92,16 @@ def generate_allocation_buckets(responses):
     asset_classes = [ac.strip() for ac in asset_classes_str.split(",") if ac.strip()]
     risk_tolerance = responses.get(2, "Moderate")
     core_satellite_pct = responses.get(3, 80)  # % in passive core
-    investment_objective = responses.get(4, "Balanced growth")
+    sector_tilt = responses.get(4, "Balanced (diversified)")
+    
+    # Map sector tilt to investment objective for backwards compatibility
+    tilt_mapping = {
+        "Defensive (preservation focus)": "Capital preservation",
+        "Income (dividend focus)": "Income generation",
+        "Balanced (diversified)": "Balanced growth",
+        "Growth (capital appreciation)": "Aggressive growth"
+    }
+    investment_objective = tilt_mapping.get(sector_tilt, "Balanced growth")
     
     # Initialize allocation structure
     allocations = {
@@ -122,8 +131,8 @@ def generate_allocation_buckets(responses):
     # Adjust for objective conflicts
     if investment_objective == "Capital preservation" and risk_tolerance == "Aggressive":
         allocations["Warnings"].append(
-            "⚠️ Conflict detected: Capital preservation objective with aggressive risk tolerance. "
-            "Adjusting to Moderate-Conservative allocation for safety."
+            "⚠️ Conflict detected: Defensive sector tilt with aggressive risk tolerance. "
+            "Adjusting to moderate allocation with defensive sector bias for balance."
         )
         base_weights = risk_profiles["Moderate"]
         # Shift more to bonds
@@ -132,8 +141,8 @@ def generate_allocation_buckets(responses):
         
     elif investment_objective == "Aggressive growth" and risk_tolerance == "Conservative":
         allocations["Warnings"].append(
-            "⚠️ Conflict detected: Aggressive growth objective with conservative risk tolerance. "
-            "Adjusting to Moderate-Aggressive allocation with protective measures."
+            "⚠️ Conflict detected: Growth sector tilt with conservative risk tolerance. "
+            "Adjusting to moderate allocation with growth sector exposure managed cautiously."
         )
         base_weights = risk_profiles["Moderate"]
         # Shift more to equities but not extreme
@@ -361,13 +370,15 @@ with col2:
 
 st.markdown("---")
 
-# Question 4: Investment Objective
-st.subheader("Question 4: Investment Objective")
+# Question 4: Sector Tilt Preference
+st.subheader("Question 4: Sector Tilt Preference")
+st.markdown("Which type of sectors should we tilt towards within your equity allocation?")
 q4 = st.radio(
-    "What is your primary investment objective?",
-    options=["Capital preservation", "Income generation", "Balanced growth", "Aggressive growth"],
-    index=["Capital preservation", "Income generation", "Balanced growth", "Aggressive growth"].index(st.session_state.portfolio_ips.get(4, "Balanced growth")) if st.session_state.portfolio_ips.get(4) in ["Capital preservation", "Income generation", "Balanced growth", "Aggressive growth"] else 2,
-    key="q4_objective"
+    "Sector Tilt Focus",
+    options=["Defensive (preservation focus)", "Income (dividend focus)", "Balanced (diversified)", "Growth (capital appreciation)"],
+    index=["Defensive (preservation focus)", "Income (dividend focus)", "Balanced (diversified)", "Growth (capital appreciation)"].index(st.session_state.portfolio_ips.get(4, "Balanced (diversified)")) if st.session_state.portfolio_ips.get(4) in ["Defensive (preservation focus)", "Income (dividend focus)", "Balanced (diversified)", "Growth (capital appreciation)"] else 2,
+    key="q4_sector_tilt",
+    help="This adjusts which sectors get higher weights within your equity allocation, not your overall asset allocation."
 )
 st.session_state.portfolio_ips[4] = q4
 
@@ -379,7 +390,7 @@ if st.button("Generate Allocation Strategy", type="primary"):
         1: "Asset class selection",
         2: "Risk tolerance",
         3: "Core+Satellite percentage",
-        4: "Investment objective"
+        4: "Sector tilt preference"
     }
     
     success_count = 0
@@ -398,8 +409,8 @@ if st.button("Generate Allocation Strategy", type="primary"):
 
 st.markdown("---")
 
-# Show Recommended Allocation Strategy
-if len(st.session_state.portfolio_ips) >= 4 or st.session_state.get('allocation_buckets_generated'):
+# Show Recommended Allocation Strategy - ONLY after button is clicked
+if st.session_state.get('allocation_buckets_generated'):
     st.subheader("📊 Recommended Allocation Strategy")
     
     allocations = generate_allocation_buckets(st.session_state.portfolio_ips)
