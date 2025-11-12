@@ -94,11 +94,11 @@ def load_portfolio_holdings(portfolio_id):
                     h.sector,
                     h.market_value,
                     h.currency,
-                    h.asof_date
+                    h.date
                 FROM historical_portfolio_info h
                 WHERE h.portfolio_id = ?
-                AND h.asof_date = (
-                    SELECT MAX(asof_date) 
+                AND h.date = (
+                    SELECT MAX(date) 
                     FROM historical_portfolio_info 
                     WHERE portfolio_id = ?
                 )
@@ -110,20 +110,20 @@ def load_portfolio_holdings(portfolio_id):
         st.error(f"Error loading holdings: {e}")
         return pd.DataFrame()
 
-def add_holding(portfolio_id, user_id, ticker, name, sector, market_value, currency, asof_date):
+def add_holding(portfolio_id, user_id, ticker, name, sector, market_value, currency, holding_date):
     """Add a holding to a portfolio"""
     try:
         with get_conn() as cn:
             cursor = cn.cursor()
             
-            # Insert into historical_portfolio_info
+            # Insert into historical_portfolio_info (uses 'date' column)
             cursor.execute("""
                 INSERT INTO historical_portfolio_info 
-                (user_id, portfolio_id, ticker, name, sector, market_value, currency, asof_date)
+                (user_id, portfolio_id, ticker, name, sector, market_value, currency, date)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (user_id, portfolio_id, ticker, name, sector, market_value, currency, asof_date))
+            """, (user_id, portfolio_id, ticker, name, sector, market_value, currency, holding_date))
             
-            # Update f_positions (current snapshot)
+            # Update f_positions (current snapshot - uses 'asof_date' column)
             cursor.execute("""
                 SELECT COUNT(*) FROM f_positions 
                 WHERE user_id = ? AND portfolio_id = ? AND ticker = ?
@@ -133,15 +133,15 @@ def add_holding(portfolio_id, user_id, ticker, name, sector, market_value, curre
                 # Update
                 cursor.execute("""
                     UPDATE f_positions
-                    SET name = ?, sector = ?, market_value = ?, currency = ?, asof_date = ?
+                    SET name = ?, sector = ?, market_value = ?, base_ccy = ?, asof_date = ?
                     WHERE user_id = ? AND portfolio_id = ? AND ticker = ?
-                """, (name, sector, market_value, currency, asof_date, user_id, portfolio_id, ticker))
+                """, (name, sector, market_value, currency, holding_date, user_id, portfolio_id, ticker))
             else:
                 # Insert
                 cursor.execute("""
-                    INSERT INTO f_positions (user_id, portfolio_id, ticker, name, sector, market_value, currency, asof_date)
+                    INSERT INTO f_positions (user_id, portfolio_id, ticker, name, sector, market_value, base_ccy, asof_date)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, (user_id, portfolio_id, ticker, name, sector, market_value, currency, asof_date))
+                """, (user_id, portfolio_id, ticker, name, sector, market_value, currency, holding_date))
             
             cn.commit()
         return True
@@ -250,7 +250,7 @@ if 'selected_portfolio_id' in st.session_state:
         # Format for display
         display_df = holdings_df.copy()
         display_df['market_value'] = display_df['market_value'].apply(lambda x: f"${x:,.2f}")
-        display_df['asof_date'] = pd.to_datetime(display_df['asof_date']).dt.strftime('%Y-%m-%d')
+        display_df['date'] = pd.to_datetime(display_df['date']).dt.strftime('%Y-%m-%d')
         
         st.dataframe(display_df, use_container_width=True, hide_index=True)
         
@@ -274,12 +274,12 @@ if 'selected_portfolio_id' in st.session_state:
         with col2:
             market_value = st.number_input("Market Value", min_value=0.0, value=0.0, step=100.0)
             currency = st.selectbox("Currency", options=["USD", "CAD"])
-            asof_date = st.date_input("As of Date", value=date.today())
+            holding_date = st.date_input("As of Date", value=date.today())
         
         submitted = st.form_submit_button("Add Holding")
         
         if submitted and ticker and name:
-            if add_holding(portfolio_id, user_id, ticker, name, sector, market_value, currency, asof_date):
+            if add_holding(portfolio_id, user_id, ticker, name, sector, market_value, currency, holding_date):
                 st.success(f"Added {ticker} to portfolio!")
                 st.rerun()
     
