@@ -13,41 +13,42 @@ sys.path.insert(0, str(project_root))
 
 st.set_page_config(
     page_title="PM-App - Portfolio Management",
-    page_icon="📊",
+    page_icon="chart_with_upwards_trend",
     layout="wide"
 )
 
-st.title("📊 PM-App: Portfolio Management System")
+st.title("PM-App: Portfolio Management System")
 st.markdown("### Multi-User Portfolio Analytics & IPS Screening")
 
 st.markdown("""
 Welcome to PM-App! This application helps you:
 
-- ✅ **Define your investment policy** through a guided questionnaire
-- 📈 **Screen securities** that match your investment criteria
-- 💼 **Track your portfolio** with institutional-grade risk metrics
-- 📊 **Analyze performance** with attribution analysis
-- 💰 **Log trades** and preview portfolio impacts
+- **Define your investment policy** through a guided questionnaire
+- **Screen securities** that match your investment criteria
+- **Track your portfolio** with institutional-grade risk metrics
+- **Analyze performance** with attribution analysis
+- **Log trades** and preview portfolio impacts
 
 ---
 
 ### Quick Start
 
-1. **Complete IPS Questionnaire** → Define your investment preferences
-2. **Browse Filtered Universe** → See securities matching your criteria
-3. **View Security Details** → Analyze fundamentals and scoring
-4. **Enter Trades** → Update your portfolio
-5. **View Dashboard** → Monitor risk metrics and attribution
+1. **Portfolio IPS** - Define risk tolerance and objectives to generate allocation buckets
+2. **Initial Holdings** - Input existing portfolio or start fresh
+3. **Security Screening** - Filter investable universe by sector/geography
+4. **Portfolio Dashboard** - View risk metrics and attribution
+5. **Trade Entry** - Buy or sell securities
 
 ---
 
 ### Navigation
 
 Use the sidebar to navigate between pages:
-- **IPS Questionnaire**: Answer 10 questions to define your investment policy
-- **Universe Browser**: Explore securities matching your IPS
-- **Portfolio Dashboard**: View your current holdings and risk metrics
-- **Trade Entry**: Buy or sell securities
+- **Portfolio IPS**: Answer 4 questions to define your investment policy
+- **Initial Holdings**: Input existing positions or skip
+- **Security Screening**: Filter securities by sector and geography
+- **Portfolio Dashboard**: View holdings and risk metrics
+- **Trade Entry**: Execute trades
 
 ---
 
