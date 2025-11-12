@@ -16,6 +16,8 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from src.core.utils_db import get_conn
+from src.core.benchmark_utils import get_portfolio_benchmark_composition, get_benchmark_name
+import yfinance as yf
 
 st.set_page_config(page_title="Portfolio Dashboard", layout="wide")
 
@@ -111,6 +113,49 @@ def load_performance_data(portfolio_id, start_date=None, end_date=None):
             return df
     except Exception as e:
         st.error(f"Error loading performance: {e}")
+        return pd.DataFrame()
+
+def load_benchmark_data(benchmark_weights, start_date, end_date):
+    """Fetch benchmark returns based on sector weights"""
+    try:
+        all_benchmark_data = []
+        
+        for benchmark_ticker, weight in benchmark_weights.items():
+            stock = yf.Ticker(benchmark_ticker)
+            hist = stock.history(start=start_date, end=end_date)
+            
+            if not hist.empty:
+                hist.reset_index(inplace=True)
+                hist['ticker'] = benchmark_ticker
+                hist['weight'] = weight
+                hist['Date'] = pd.to_datetime(hist['Date']).dt.tz_localize(None)
+                all_benchmark_data.append(hist[['Date', 'ticker', 'Close', 'weight']])
+        
+        if all_benchmark_data:
+            combined = pd.concat(all_benchmark_data, ignore_index=True)
+            combined.rename(columns={'Date': 'date', 'Close': 'price'}, inplace=True)
+            
+            # Calculate weighted benchmark return
+            combined = combined.sort_values(['date', 'ticker'])
+            combined['daily_return'] = combined.groupby('ticker')['price'].pct_change()
+            combined['daily_return'] = combined['daily_return'].fillna(0)
+            
+            # Aggregate weighted returns by date
+            weighted_returns = combined.groupby('date').apply(
+                lambda x: (x['daily_return'] * x['weight']).sum(),
+                include_groups=False
+            ).reset_index()
+            weighted_returns.columns = ['date', 'daily_return']
+            
+            # Calculate cumulative return
+            weighted_returns['cumulative_return'] = (1 + weighted_returns['daily_return']).cumprod() - 1
+            
+            return weighted_returns
+        else:
+            return pd.DataFrame()
+    
+    except Exception as e:
+        st.warning(f"Could not load benchmark data: {e}")
         return pd.DataFrame()
 
 # Portfolio Selection
@@ -270,20 +315,30 @@ if not performance_df.empty:
     st.plotly_chart(fig_portfolio_returns, use_container_width=True)
     
     # Portfolio-level aggregate performance
-    st.subheader("Portfolio Aggregate Performance")
+    st.subheader("Portfolio vs Benchmark Performance")
     
     # Calculate value-weighted portfolio return
     portfolio_agg = performance_df.groupby('date').apply(
         lambda x: pd.Series({
             'daily_return': (x['daily_return'] * x['market_value']).sum() / x['market_value'].sum(),
             'total_value': x['market_value'].sum()
-        })
+        }), include_groups=False
     ).reset_index()
     
     # Calculate cumulative return
     portfolio_agg['cumulative_return'] = (1 + portfolio_agg['daily_return']).cumprod() - 1
     
+    # Get benchmark weights and data
+    benchmark_weights = get_portfolio_benchmark_composition(composition_df)
+    benchmark_data = load_benchmark_data(
+        benchmark_weights, 
+        portfolio_agg['date'].min(), 
+        portfolio_agg['date'].max()
+    )
+    
     fig_agg = go.Figure()
+    
+    # Add portfolio line
     fig_agg.add_trace(go.Scatter(
         x=portfolio_agg['date'],
         y=portfolio_agg['cumulative_return'] * 100,
@@ -293,14 +348,39 @@ if not performance_df.empty:
         hovertemplate='<b>Portfolio</b><br>Date: %{x}<br>Return: %{y:.2f}%<extra></extra>'
     ))
     
+    # Add benchmark line if data available
+    if not benchmark_data.empty:
+        fig_agg.add_trace(go.Scatter(
+            x=benchmark_data['date'],
+            y=benchmark_data['cumulative_return'] * 100,
+            mode='lines',
+            name='Benchmark',
+            line=dict(color='gray', width=2, dash='dash'),
+            hovertemplate='<b>Benchmark</b><br>Date: %{x}<br>Return: %{y:.2f}%<extra></extra>'
+        ))
+    
     fig_agg.update_layout(
-        title='Portfolio Cumulative Return',
+        title='Portfolio vs Benchmark Cumulative Returns',
         xaxis_title='Date',
         yaxis_title='Cumulative Return (%)',
         hovermode='x unified',
-        showlegend=True
+        showlegend=True,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
     st.plotly_chart(fig_agg, use_container_width=True)
+    
+    # Show benchmark composition
+    if benchmark_weights:
+        with st.expander("📊 Benchmark Composition"):
+            st.markdown("**Sector-Matched Benchmark Weights:**")
+            bench_display = []
+            for ticker, weight in benchmark_weights.items():
+                bench_display.append({
+                    'Benchmark': get_benchmark_name(ticker),
+                    'Ticker': ticker,
+                    'Weight': f"{weight*100:.1f}%"
+                })
+            st.table(pd.DataFrame(bench_display))
     
     # Performance statistics
     col1, col2, col3, col4 = st.columns(4)
@@ -310,6 +390,19 @@ if not performance_df.empty:
     annualized_volatility = daily_volatility * (252 ** 0.5)
     sharpe_ratio = (portfolio_agg['daily_return'].mean() / portfolio_agg['daily_return'].std()) * (252 ** 0.5) if portfolio_agg['daily_return'].std() > 0 else 0
     
+    # Calculate alpha vs benchmark if available
+    if not benchmark_data.empty:
+        # Merge portfolio and benchmark by date
+        merged = portfolio_agg.merge(benchmark_data[['date', 'cumulative_return']], on='date', suffixes=('_port', '_bench'))
+        if not merged.empty:
+            port_final = merged['cumulative_return_port'].iloc[-1] * 100
+            bench_final = merged['cumulative_return_bench'].iloc[-1] * 100
+            alpha = port_final - bench_final
+        else:
+            alpha = None
+    else:
+        alpha = None
+    
     with col1:
         st.metric("Cumulative Return", f"{latest_return:.2f}%")
     with col2:
@@ -317,8 +410,11 @@ if not performance_df.empty:
     with col3:
         st.metric("Sharpe Ratio", f"{sharpe_ratio:.2f}")
     with col4:
-        max_drawdown = (portfolio_agg['cumulative_return'].cummax() - portfolio_agg['cumulative_return']).max() * 100
-        st.metric("Max Drawdown", f"-{max_drawdown:.2f}%")
+        if alpha is not None:
+            st.metric("Alpha vs Benchmark", f"{alpha:+.2f}%", delta=f"{alpha:.2f}%")
+        else:
+            max_drawdown = (portfolio_agg['cumulative_return'].cummax() - portfolio_agg['cumulative_return']).max() * 100
+            st.metric("Max Drawdown", f"-{max_drawdown:.2f}%")
 
 else:
     st.info("No performance data available for the selected date range.")

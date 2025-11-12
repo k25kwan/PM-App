@@ -14,6 +14,7 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from src.core.utils_db import get_conn
+from src.core.benchmark_utils import get_portfolio_benchmark_composition, get_benchmark_name
 
 st.set_page_config(page_title="Add Portfolio", layout="wide")
 
@@ -273,7 +274,21 @@ if 'selected_portfolio_id' in st.session_state:
         st.dataframe(display_df, use_container_width=True, hide_index=True)
         
         total_value = holdings_df['market_value'].sum()
-        st.metric("Total Portfolio Value", f"${total_value:,.2f}")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.metric("Total Portfolio Value", f"${total_value:,.2f}")
+        
+        with col2:
+            # Show benchmark composition
+            benchmark_weights = get_portfolio_benchmark_composition(holdings_df)
+            if benchmark_weights:
+                st.markdown("**Benchmark Composition:**")
+                bench_text = []
+                for ticker, weight in sorted(benchmark_weights.items(), key=lambda x: x[1], reverse=True):
+                    bench_text.append(f"{get_benchmark_name(ticker)} ({ticker}): {weight*100:.1f}%")
+                st.caption(" | ".join(bench_text))
     
     # Add new holding
     st.markdown("### Add New Holding")
