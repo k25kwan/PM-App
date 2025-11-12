@@ -116,14 +116,32 @@ def add_holding(portfolio_id, user_id, ticker, name, sector, market_value, curre
         with get_conn() as cn:
             cursor = cn.cursor()
             
-            # Insert into historical_portfolio_info (uses 'date' column)
+            # Step 1: Ensure security exists in dim_securities (required for f_positions FK)
+            cursor.execute("""
+                SELECT security_id FROM dim_securities WHERE ticker = ?
+            """, (ticker,))
+            result = cursor.fetchone()
+            
+            if result:
+                security_id = result[0]
+            else:
+                # Insert new security into dim_securities
+                # sleeve defaults to NULL (will be determined by IPS allocation later)
+                cursor.execute("""
+                    INSERT INTO dim_securities (ticker, name, sector, sleeve, base_ccy)
+                    VALUES (?, ?, ?, NULL, ?)
+                """, (ticker, name, sector, currency))
+                cursor.execute("SELECT @@IDENTITY")
+                security_id = cursor.fetchone()[0]
+            
+            # Step 2: Insert into historical_portfolio_info (uses 'date' column)
             cursor.execute("""
                 INSERT INTO historical_portfolio_info 
                 (user_id, portfolio_id, ticker, name, sector, market_value, currency, date)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """, (user_id, portfolio_id, ticker, name, sector, market_value, currency, holding_date))
             
-            # Update f_positions (current snapshot - uses 'asof_date' column)
+            # Step 3: Update f_positions (current snapshot - uses 'asof_date' and 'security_id' columns)
             cursor.execute("""
                 SELECT COUNT(*) FROM f_positions 
                 WHERE user_id = ? AND portfolio_id = ? AND ticker = ?
@@ -133,15 +151,15 @@ def add_holding(portfolio_id, user_id, ticker, name, sector, market_value, curre
                 # Update
                 cursor.execute("""
                     UPDATE f_positions
-                    SET name = ?, sector = ?, market_value = ?, base_ccy = ?, asof_date = ?
+                    SET security_id = ?, name = ?, sector = ?, market_value = ?, base_ccy = ?, asof_date = ?
                     WHERE user_id = ? AND portfolio_id = ? AND ticker = ?
-                """, (name, sector, market_value, currency, holding_date, user_id, portfolio_id, ticker))
+                """, (security_id, name, sector, market_value, currency, holding_date, user_id, portfolio_id, ticker))
             else:
                 # Insert
                 cursor.execute("""
-                    INSERT INTO f_positions (user_id, portfolio_id, ticker, name, sector, market_value, base_ccy, asof_date)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, (user_id, portfolio_id, ticker, name, sector, market_value, currency, holding_date))
+                    INSERT INTO f_positions (security_id, user_id, portfolio_id, ticker, name, sector, market_value, base_ccy, asof_date)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (security_id, user_id, portfolio_id, ticker, name, sector, market_value, currency, holding_date))
             
             cn.commit()
         return True
