@@ -1,11 +1,13 @@
 """
-Security Screening
-Filter universe based on user preferences (sectors, geography)
+Security Screening  
+Filter universe using real yfinance data based on user preferences
 """
 
 import streamlit as st
 import sys
 from pathlib import Path
+import yfinance as yf
+import pandas as pd
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
@@ -16,7 +18,7 @@ from src.core.utils_db import get_conn
 st.set_page_config(page_title="Security Screening", layout="wide")
 
 st.title("Security Universe Screening")
-st.markdown("Define filters to narrow down your investable universe")
+st.markdown("Filter investable securities using real market data from Yahoo Finance")
 
 # Get user_id from session
 user_id = st.session_state.get('user_id', 1)
@@ -71,6 +73,74 @@ def save_screening_pref(user_id, question_id, question_text, response):
         st.error(f"Error saving preference: {e}")
         return False
 
+# Define base universe of tickers to screen
+# This could be expanded or pulled from a database
+BASE_UNIVERSE = {
+    # Major ETFs by sector/asset class
+    "ETF": [
+        "SPY",    # S&P 500
+        "QQQ",    # Nasdaq 100 (Tech-heavy)
+        "IWM",    # Russell 2000 Small Cap
+        "XLF",    # Financials
+        "XLE",    # Energy
+        "XLV",    # Healthcare
+        "XLK",    # Technology
+        "XLU",    # Utilities
+        "XLI",    # Industrials
+        "XLY",    # Consumer Discretionary
+        "XLP",    # Consumer Staples
+        "XLRE",   # Real Estate
+        "AGG",    # Aggregate Bonds
+        "LQD",    # Investment Grade Corp Bonds
+        "HYG",    # High Yield Bonds
+        "TLT",    # Long-term Treasury
+    ],
+    "Canada ETF": [
+        "XIU.TO",   # S&P/TSX 60
+        "XBB.TO",   # Canadian Aggregate Bond
+        "XIC.TO",   # TSX Composite
+        "ZCN.TO",   # Canadian Equity
+    ],
+    # Major US stocks by sector
+    "US Tech": ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA"],
+    "US Financials": ["JPM", "BAC", "WFC", "GS", "MS", "C"],
+    "US Healthcare": ["JNJ", "UNH", "PFE", "ABBV", "MRK", "LLY"],
+    "US Energy": ["XOM", "CVX", "COP", "SLB"],
+    "US Utilities": ["NEE", "DUK", "SO", "D"],
+    "US Consumer": ["WMT", "PG", "KO", "PEP", "COST"],
+    "US Industrial": ["BA", "CAT", "GE", "HON", "UNP"],
+    # Major Canadian stocks
+    "Canada Financials": ["TD.TO", "RY.TO", "BNS.TO", "BMO.TO", "CM.TO"],
+    "Canada Energy": ["CNQ.TO", "SU.TO", "ENB.TO", "TRP.TO"],
+    "Canada Materials": ["ABX.TO", "SHOP.TO", "FM.TO"],
+}
+
+def get_ticker_info(ticker):
+    """Fetch ticker info from yfinance"""
+    try:
+        stock = yf.Ticker(ticker)
+        info = stock.info
+        return {
+            'ticker': ticker,
+            'name': info.get('longName', ticker),
+            'sector': info.get('sector', 'Unknown'),
+            'industry': info.get('industry', 'Unknown'),
+            'market_cap': info.get('marketCap', 0),
+            'country': info.get('country', 'Unknown'),
+            'price': info.get('currentPrice', info.get('regularMarketPrice', 0))
+        }
+    except Exception as e:
+        # Return minimal info if yfinance fails
+        return {
+            'ticker': ticker,
+            'name': ticker,
+            'sector': 'Unknown',
+            'industry': 'Unknown',
+            'market_cap': 0,
+            'country': 'US' if '.TO' not in ticker else 'Canada',
+            'price': 0
+        }
+
 # Load existing preferences
 existing_prefs = load_screening_prefs(user_id)
 
@@ -83,8 +153,9 @@ st.markdown("---")
 st.subheader("Sector Exclusions")
 st.markdown("Select sectors you want to EXCLUDE from your universe")
 
-all_sectors = ["Technology", "Financials", "Healthcare", "Energy", "Utilities", 
-               "Real Estate", "Consumer", "Industrial"]
+all_sectors = ["Technology", "Financial Services", "Financials", "Healthcare", "Energy", 
+               "Utilities", "Real Estate", "Consumer Cyclical", "Consumer Defensive",
+               "Industrials", "Communication Services", "Basic Materials"]
 
 existing_exclusions = st.session_state.screening_prefs.get(10, "").split(",") if st.session_state.screening_prefs.get(10) else []
 excluded_sectors = st.multiselect(
@@ -100,155 +171,124 @@ st.markdown("---")
 # Geographic Preference
 st.subheader("Geographic Preference")
 geography = st.radio(
-    "Which geographic markets do you want to invest in?",
-    options=["US only", "Canada only", "North America", "Global", "Emerging markets"],
-    index=["US only", "Canada only", "North America", "Global", "Emerging markets"].index(st.session_state.screening_prefs.get(11, "North America")) if st.session_state.screening_prefs.get(11) in ["US only", "Canada only", "North America", "Global", "Emerging markets"] else 2,
+    "Select your geographic preference",
+    options=["US only", "Canada only", "North America", "Global"],
+    index=["US only", "Canada only", "North America", "Global"].index(
+        st.session_state.screening_prefs.get(11, "North America")
+    ) if st.session_state.screening_prefs.get(11) in ["US only", "Canada only", "North America", "Global"] else 2,
     key="geography"
 )
 st.session_state.screening_prefs[11] = geography
 
 st.markdown("---")
 
-# Save Button
-if st.button("Apply Filters and Generate Universe", type="primary"):
+# Save preferences
+if st.button("Save Screening Preferences", type="primary"):
+    success = True
     if save_screening_pref(user_id, 10, "Sector exclusions", st.session_state.screening_prefs[10]):
-        if save_screening_pref(user_id, 11, "Geographic preference", st.session_state.screening_prefs[11]):
-            st.success("Screening preferences saved!")
-            st.session_state.universe_generated = True
+        pass
+    else:
+        success = False
+    
+    if save_screening_pref(user_id, 11, "Geographic preference", st.session_state.screening_prefs[11]):
+        pass
+    else:
+        success = False
+    
+    if success:
+        st.success("Preferences saved successfully!")
+    else:
+        st.warning("Some preferences failed to save")
 
 st.markdown("---")
 
-# Display Filtered Universe
-if st.session_state.get('universe_generated') or len(st.session_state.screening_prefs) >= 2:
-    st.subheader("Your Filtered Investment Universe")
-    
-    # Get sector exclusions and geography
-    excluded = st.session_state.screening_prefs.get(10, "").split(",")
-    excluded = [s.strip() for s in excluded if s.strip()]
-    geo = st.session_state.screening_prefs.get(11, "North America")
-    
-    st.markdown(f"**Geography:** {geo}")
-    st.markdown(f"**Excluded Sectors:** {', '.join(excluded) if excluded else 'None'}")
-    
-    # Sample universe data (in production, this would query master_universe table)
-    
-    # ETFs Tab
-    st.markdown("### Exchange-Traded Funds (ETFs)")
-    etfs = []
-    
-    if "Technology" not in excluded:
-        etfs.append(("XLK", "Technology Select Sector SPDR", "US", "Technology"))
-        etfs.append(("QQQ", "Invesco QQQ Trust", "US", "Technology"))
-    
-    if "Financials" not in excluded:
-        etfs.append(("XLF", "Financial Select Sector SPDR", "US", "Financials"))
-        if geo in ["Canada only", "North America"]:
-            etfs.append(("XFN.TO", "iShares S&P/TSX Financials", "Canada", "Financials"))
-    
-    if "Healthcare" not in excluded:
-        etfs.append(("XLV", "Health Care Select Sector SPDR", "US", "Healthcare"))
-    
-    if "Energy" not in excluded:
-        etfs.append(("XLE", "Energy Select Sector SPDR", "US", "Energy"))
-    
-    # Broad market ETFs
-    if geo == "US only":
-        etfs.append(("SPY", "SPDR S&P 500 ETF", "US", "Broad Market"))
-        etfs.append(("IWM", "iShares Russell 2000", "US", "Broad Market"))
-    elif geo in ["Canada only", "North America"]:
-        etfs.append(("XIU.TO", "iShares S&P/TSX 60", "Canada", "Broad Market"))
-        etfs.append(("VCN.TO", "Vanguard FTSE Canada", "Canada", "Broad Market"))
-    
-    if etfs:
-        st.table({
-            "Ticker": [e[0] for e in etfs],
-            "Name": [e[1] for e in etfs],
-            "Geography": [e[2] for e in etfs],
-            "Category": [e[3] for e in etfs]
-        })
-    else:
-        st.info("No ETFs match your criteria")
-    
-    # Equities Tab
-    st.markdown("### Individual Equities")
-    equities = []
-    
-    if "Technology" not in excluded:
-        if geo in ["US only", "North America", "Global"]:
-            equities.extend([
-                ("AAPL", "Apple Inc.", "US", "Technology"),
-                ("MSFT", "Microsoft Corp.", "US", "Technology"),
-                ("NVDA", "NVIDIA Corp.", "US", "Technology")
-            ])
-        if geo in ["Canada only", "North America"]:
-            equities.append(("SHOP.TO", "Shopify Inc.", "Canada", "Technology"))
-    
-    if "Financials" not in excluded:
-        if geo in ["US only", "North America", "Global"]:
-            equities.extend([
-                ("JPM", "JPMorgan Chase", "US", "Financials"),
-                ("BAC", "Bank of America", "US", "Financials")
-            ])
-        if geo in ["Canada only", "North America"]:
-            equities.extend([
-                ("TD.TO", "Toronto-Dominion Bank", "Canada", "Financials"),
-                ("RY.TO", "Royal Bank of Canada", "Canada", "Financials"),
-                ("BNS.TO", "Bank of Nova Scotia", "Canada", "Financials")
-            ])
-    
-    if "Healthcare" not in excluded and geo in ["US only", "North America", "Global"]:
-        equities.extend([
-            ("JNJ", "Johnson & Johnson", "US", "Healthcare"),
-            ("UNH", "UnitedHealth Group", "US", "Healthcare")
-        ])
-    
-    if "Energy" not in excluded:
-        if geo in ["US only", "North America", "Global"]:
-            equities.append(("XOM", "Exxon Mobil", "US", "Energy"))
-        if geo in ["Canada only", "North America"]:
-            equities.extend([
-                ("CNQ.TO", "Canadian Natural Resources", "Canada", "Energy"),
-                ("SU.TO", "Suncor Energy", "Canada", "Energy")
-            ])
-    
-    if equities:
-        st.table({
-            "Ticker": [e[0] for e in equities],
-            "Name": [e[1] for e in equities],
-            "Geography": [e[2] for e in equities],
-            "Sector": [e[3] for e in equities]
-        })
-    else:
-        st.info("No equities match your criteria")
-    
-    # Fixed Income Tab
-    st.markdown("### Fixed Income")
-    fixed_income = []
-    
-    if geo in ["US only", "North America", "Global"]:
-        fixed_income.extend([
-            ("AGG", "iShares Core US Aggregate Bond", "US", "Government Bonds"),
-            ("LQD", "iShares Investment Grade Corp", "US", "Investment Grade Corp"),
-            ("HYG", "iShares High Yield Corp", "US", "High Yield")
-        ])
-    
-    if geo in ["Canada only", "North America"]:
-        fixed_income.extend([
-            ("XBB.TO", "iShares Core Canadian Bond", "Canada", "Government Bonds"),
-            ("XCB.TO", "iShares Canadian Corporate Bond", "Canada", "Investment Grade Corp")
-        ])
-    
-    if fixed_income:
-        st.table({
-            "Ticker": [f[0] for f in fixed_income],
-            "Name": [f[1] for f in fixed_income],
-            "Geography": [f[2] for f in fixed_income],
-            "Type": [f[3] for f in fixed_income]
-        })
-    else:
-        st.info("No fixed income securities match your criteria")
-    
-    st.markdown("---")
-    st.info("**Next Step:** Use the Portfolio Dashboard to view your current holdings and risk metrics, or go to Trade Entry to buy/sell securities from this universe.")
-else:
-    st.info("Complete the screening questions above and click 'Apply Filters' to see your filtered universe.")
+# Filter and display universe
+st.subheader("Filtered Universe")
+
+if st.button("Apply Filters and Screen Securities", type="primary"):
+    with st.spinner("Fetching data from Yahoo Finance..."):
+        # Build ticker list based on geography
+        tickers_to_screen = []
+        
+        if geography == "US only":
+            for category, ticker_list in BASE_UNIVERSE.items():
+                if "Canada" not in category:
+                    tickers_to_screen.extend(ticker_list)
+        elif geography == "Canada only":
+            for category, ticker_list in BASE_UNIVERSE.items():
+                if "Canada" in category:
+                    tickers_to_screen.extend(ticker_list)
+        else:  # North America or Global
+            for category, ticker_list in BASE_UNIVERSE.items():
+                tickers_to_screen.extend(ticker_list)
+        
+        # Fetch ticker info
+        screened_securities = []
+        progress_bar = st.progress(0)
+        
+        for i, ticker in enumerate(tickers_to_screen):
+            info = get_ticker_info(ticker)
+            
+            # Apply sector filter
+            if excluded_sectors and info['sector'] in excluded_sectors:
+                continue
+            
+            screened_securities.append(info)
+            progress_bar.progress((i + 1) / len(tickers_to_screen))
+        
+        progress_bar.empty()
+        
+        # Display results
+        if screened_securities:
+            df = pd.DataFrame(screened_securities)
+            
+            # Format market cap
+            df['market_cap_formatted'] = df['market_cap'].apply(
+                lambda x: f"${x/1e9:.2f}B" if x > 0 else "N/A"
+            )
+            
+            # Format price
+            df['price_formatted'] = df['price'].apply(
+                lambda x: f"${x:.2f}" if x > 0 else "N/A"
+            )
+            
+            # Display table
+            display_df = df[['ticker', 'name', 'sector', 'industry', 'country', 'market_cap_formatted', 'price_formatted']]
+            display_df.columns = ['Ticker', 'Name', 'Sector', 'Industry', 'Country', 'Market Cap', 'Price']
+            
+            st.dataframe(display_df, use_container_width=True, hide_index=True)
+            
+            st.success(f"Found {len(screened_securities)} securities matching your criteria")
+            
+            # Summary stats
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.metric("Total Securities", len(screened_securities))
+            
+            with col2:
+                unique_sectors = df['sector'].nunique()
+                st.metric("Unique Sectors", unique_sectors)
+            
+            with col3:
+                unique_countries = df['country'].nunique()
+                st.metric("Countries", unique_countries)
+            
+            # Sector breakdown
+            st.markdown("### Sector Breakdown")
+            sector_counts = df['sector'].value_counts()
+            st.bar_chart(sector_counts)
+        
+        else:
+            st.warning("No securities match your filters. Try adjusting your exclusions.")
+
+st.markdown("---")
+
+st.info("""
+**Note**: This screener uses Yahoo Finance data. The base universe includes:
+- Major US/Canadian ETFs (sector, broad market, fixed income)
+- Large-cap US stocks across all sectors
+- Major Canadian stocks (banks, energy, materials)
+
+For a complete institutional-grade screener, integrate with Bloomberg or FactSet APIs.
+""")

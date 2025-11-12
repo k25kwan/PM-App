@@ -34,8 +34,8 @@ Welcome to PM-App! This application helps you:
 ### Quick Start
 
 1. **Portfolio IPS** - Define risk tolerance and objectives to generate allocation buckets
-2. **Initial Holdings** - Input existing portfolio or start fresh
-3. **Security Screening** - Filter investable universe by sector/geography
+2. **Add Portfolio** - Create/manage multiple portfolios and input holdings
+3. **Security Screening** - Filter investable universe by sector/geography (connects to real data)
 4. **Portfolio Dashboard** - View risk metrics and attribution
 5. **Trade Entry** - Buy or sell securities
 
@@ -45,8 +45,8 @@ Welcome to PM-App! This application helps you:
 
 Use the sidebar to navigate between pages:
 - **Portfolio IPS**: Answer 4 questions to define your investment policy
-- **Initial Holdings**: Input existing positions or skip
-- **Security Screening**: Filter securities by sector and geography
+- **Add Portfolio**: Create, view, edit, or delete portfolios with holdings
+- **Security Screening**: Filter securities by sector and geography using yfinance data
 - **Portfolio Dashboard**: View holdings and risk metrics
 - **Trade Entry**: Execute trades
 
