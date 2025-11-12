@@ -1,6 +1,6 @@
 # Clean Codebase Documentation
 
-This document provides a comprehensive explanation of every file in the PM-App codebase. Read this to understand what each component does and how they work together.
+This document provides a comprehensive explanation of every file in the PM-App codebase, the architecture, data flows, and design decisions. Read this to fully understand how the system works.
 
 ## Table of Contents
 1. [System Architecture](#system-architecture)
@@ -10,45 +10,220 @@ This document provides a comprehensive explanation of every file in the PM-App c
 5. [Database Schema](#database-schema)
 6. [Scripts](#scripts)
 7. [Data Flow](#data-flow)
+8. [Design Decisions](#design-decisions)
 
 ---
 
 ## System Architecture
 
-PM-App is a **forward-filling** portfolio management system. This means:
-- You manually input your initial portfolio holdings
-- The system automatically fetches daily prices
-- Risk metrics and attribution are calculated daily using rolling windows
-- **No historical backfilling** - it builds history going forward from today
+### The Big Picture: Forward-Filling Philosophy
+
+PM-App is fundamentally different from traditional portfolio management systems. Instead of requiring you to import years of historical data, it builds your portfolio history **incrementally from today forward**.
+
+**Why this approach?**
+- **No historical data migration**: Don't need to hunt down old holdings records
+- **Clean data**: Each day's data captured when it's fresh, not reconstructed later
+- **No survivorship bias**: You capture what you actually owned, not what survived
+- **Predictable**: Each day adds exactly one data point - no complex backfilling logic
+- **Fast**: Incremental calculations are faster than full recalculations
+
+**The Trade-off**: You can't analyze historical performance from before you started using the system. But for ongoing portfolio management, this is usually fine - you care more about forward-looking risk monitoring than backward-looking performance measurement.
 
 ### Technology Stack
-- **Language**: Python 3.10+
-- **Database**: SQL Server Express
-- **Data Source**: Yahoo Finance (via yfinance library)
-- **Key Libraries**: pandas, numpy, sqlalchemy, pyodbc
+
+- **Database**: SQL Server Express (free edition, production-ready)
+  - Why SQL Server? Strong for financial data, excellent performance, free tier available, works great on Windows
+  - Stores: Portfolio holdings, prices, risk metrics, attribution results
+  - All calculations flow through database views (ensures data consistency)
+  
+- **Data Source**: Yahoo Finance via `yfinance` library
+  - Why yfinance? Free, reliable, comprehensive coverage of stocks/ETFs, historical data
+  - Limitations: Some bonds don't have direct tickers (we use ETF proxies)
+  
+- **Key Libraries**: 
+  - `pandas`: DataFrames for financial time series manipulation
+  - `numpy`: Numerical calculations (volatility, correlations, etc.)
+  - `pyodbc`: SQL Server connection (native Windows ODBC integration)
+  - `python-dotenv`: Environment variable management (.env file)
 
 ### Design Philosophy
-- **Simple and Clean**: Every file has one clear purpose
-- **Forward-Only**: No complex historical data population
-- **Incremental Updates**: Each day adds one new row to metrics tables
-- **Minimal Dependencies**: Only essential libraries
+
+**1. Simplicity Over Features**
+- Each file has one clear purpose
+- No over-engineering or premature optimization
+- Readable code that your friend can understand in 15 minutes
+
+**2. Database-Centric Architecture**
+- Database is the "source of truth"
+- Python scripts are stateless (no in-memory caching between runs)
+- All calculations flow through SQL views
+- This makes the system deterministic and debuggable
+
+**3. Incremental > Batch**
+- Each daily run adds one new day's worth of metrics
+- Never recalculate full history (only today's values)
+- Fast, predictable runtimes (~1 minute total)
+
+**4. Separation of Concerns**
+- **Ingestion** (`src/ingestion/`): Get external data (Yahoo Finance)
+- **Core** (`src/core/`): Utilities used by everything (DB connection, sanitization)
+- **Analytics** (`src/analytics/`): Calculate metrics (risk, attribution)
+- **Database** (`sql/`): Store and structure data (schemas, views)
+- **Automation** (`scripts/`): Orchestrate workflows (PowerShell)
+
+Each layer has a clear boundary. Ingestion doesn't know about analytics. Analytics doesn't know about ingestion. They communicate only through the database.
 
 ---
 
 ## Core Utilities
 
 ### `src/core/utils_db.py`
-**Purpose**: Database connection management
+**Purpose**: Centralized database connection management
 
 **What it does**:
-- Creates SQLAlchemy database connections
-- Loads connection parameters from `.env` file
-- Provides reusable `get_conn()` function for all scripts
+This file provides a single function that every other Python script uses to connect to SQL Server. It handles all the messy details of connection strings, authentication, and driver configuration.
 
-**Key Functions**:
+**Key Function**:
 ```python
-get_conn() -> sqlalchemy.engine.Connection
+def get_conn():
+    """Returns a pyodbc connection to SQL Server"""
+    # Reads from .env file:
+    # - DB_SERVER (e.g., "localhost\SQLEXPRESS")
+    # - DB_NAME (e.g., "RiskDemo")
+    # - AUTH_MODE (e.g., "windows" for Windows Auth, or set DB_USER/DB_PASS)
+    # - DB_DRIVER (e.g., "ODBC Driver 17 for SQL Server")
 ```
+
+**Authentication Modes**:
+1. **Windows Authentication** (recommended for local development):
+   ```
+   AUTH_MODE=windows
+   ```
+   Uses your Windows login credentials. No password needed.
+
+2. **SQL Authentication** (for username/password):
+   ```
+   AUTH_MODE=sql
+   DB_USER=sa
+   DB_PASS=your_password
+   ```
+
+**Connection Settings**:
+- `autocommit = True`: Every SQL statement commits immediately (no manual commit needed)
+- `Encrypt=yes; TrustServerCertificate=yes`: Required for modern SQL Server security
+
+**Why centralized?**
+- If you need to change database server, update .env file once (not in 10 different scripts)
+- Consistent connection handling across all scripts
+- Easy to switch between Windows Auth and SQL Auth
+- Handles driver differences automatically
+
+**Usage Pattern** (used everywhere):
+```python
+from src.core.utils_db import get_conn
+
+with get_conn() as cn:
+    df = pd.read_sql("SELECT * FROM historical_portfolio_info", cn)
+    # Connection automatically closes when 'with' block ends
+```
+
+**Helper Function**:
+```python
+def run_sql_file(path: str):
+    """Execute a .sql file (useful for running schema scripts)"""
+```
+
+---
+
+### `src/core/data_sanitizers.py`
+**Purpose**: Clean data before SQL Server inserts
+
+**The Problem**: 
+Pandas calculations often produce `NaN`, `None`, or `infinity` values. SQL Server **rejects** these:
+```python
+# This will crash SQL Server insert:
+value = np.sqrt(-1)  # NaN
+cursor.execute("INSERT INTO table VALUES (?)", value)  # ERROR!
+```
+
+**The Solution**: 
+Sanitize every value before inserting:
+
+**Function 1: `sanitize_decimal(val, default=0)`**
+```python
+def sanitize_decimal(val, default=0):
+    """
+    Sanitize numeric values for SQL DECIMAL columns
+    
+    Handles:
+    - None → default
+    - NaN → default
+    - Infinity → default  
+    - Valid numbers → Decimal(value) with precision
+    
+    Returns: Decimal object or default value
+    """
+```
+
+**Example Usage**:
+```python
+from src.core.data_sanitizers import sanitize_decimal
+
+# Calculate volatility (might be NaN if insufficient data)
+volatility = returns.std()  # Could be NaN
+
+# Sanitize before insert
+clean_vol = sanitize_decimal(volatility, default=0.0)
+
+# Safe to insert
+cursor.execute(
+    "INSERT INTO portfolio_risk_metrics (metric_value) VALUES (?)",
+    clean_vol
+)
+```
+
+**Function 2: `sanitize_string(val, default='')`**
+```python
+def sanitize_string(val, default=''):
+    """
+    Sanitize string/text values for SQL NVARCHAR columns
+    
+    Handles:
+    - None → default
+    - NaN (float) → default
+    - Empty string → default
+    - Valid strings → str(val)
+    
+    Returns: String or default value
+    """
+```
+
+**Example Usage**:
+```python
+from src.core.data_sanitizers import sanitize_string
+
+# Ticker might be None in some data sources
+ticker = stock_data.get('ticker')  # Could be None
+
+# Sanitize before insert
+clean_ticker = sanitize_string(ticker, default='UNKNOWN')
+
+cursor.execute(
+    "INSERT INTO historical_portfolio_info (ticker) VALUES (?)",
+    clean_ticker
+)
+```
+
+**Why This Matters**:
+Without sanitization, your daily updates will crash randomly when:
+- Not enough data exists to calculate a metric (volatility with 1 day of returns = NaN)
+- Division by zero occurs (Sharpe ratio with zero volatility = infinity)
+- External data source returns incomplete records (ticker missing = None)
+
+**Best Practice**: 
+**Always sanitize before any SQL insert**. It takes 2 seconds and prevents hours of debugging.
+
+---
 Returns a database connection using environment variables:
 - `DB_SERVER`: Your SQL Server instance name
 - `DB_NAME`: Database name (default: RiskDemo)
@@ -104,54 +279,169 @@ df.to_sql('Prices', conn, schema='core', if_exists='append', index=False)
 ## Data Ingestion
 
 ### `src/ingestion/fetch_prices.py`
-**Purpose**: Fetch latest prices from Yahoo Finance and save to database
+**Purpose**: Download latest stock/ETF prices from Yahoo Finance and prepare for database loading
 
-**What it does**:
-1. Queries database for all unique tickers in `core.PortfolioHoldings`
-2. Fetches latest prices from Yahoo Finance using `yfinance`
-3. Caches prices to `data/` folder as JSON (for faster re-runs)
-4. Inserts new prices into `core.Prices` table
+**This is Stage 1 of the daily workflow** - provides the raw price data everything else depends on.
 
-**Workflow**:
-```
-1. Get unique tickers from PortfolioHoldings
-2. Check cache for recent prices (within 24 hours)
-3. If cache miss, fetch from Yahoo Finance
-4. Save to cache as JSON
-5. Insert into core.Prices (skipping duplicates)
-```
+**Step-by-Step Process**:
 
-**Key Parameters**:
+**1. Ticker Mapping (Portfolio Conventions → Yahoo Finance Tickers)**
+
+Some portfolio instruments don't have direct Yahoo Finance tickers. We use ETF proxies:
+
 ```python
-start_date: Date to fetch prices from (default: 1 year ago)
-end_date: Date to fetch prices until (default: today)
+TICKER_MAPPING = {
+    # Bonds → Bond ETF Proxies  
+    "US10Y": "IEF",       # US 10Y Treasury → iShares 7-10 Year Treasury ETF
+    "CAN10Y": "XBB.TO",   # Canadian bonds → iShares Canadian Bond ETF
+    "CORP5": "LQD",       # Corporate bonds → Investment Grade Corp ETF
+    
+    # Stocks map to themselves
+    "AAPL": "AAPL",
+    "MSFT": "MSFT",
+}
 ```
 
-**Cache Structure**:
-```
-data/
-  ├── AAPL_prices.json
-  ├── MSFT_prices.json
-  └── ...
+**Why ETF proxies for bonds?**
+- Bonds trade infrequently (illiquid) → irregular, unreliable pricing
+- Bond ETFs trade continuously → daily prices always available
+- ETFs track bond indices with 99%+ correlation → excellent proxy
+- Example: IEF provides daily-updated 10-year Treasury exposure
+
+**2. Bulk Price Download**
+
+Downloads prices for all portfolio AND benchmark tickers in one efficient API call:
+
+```python
+import yfinance as yf
+
+# Get all unique tickers (portfolio + benchmark)
+YF_TICKERS = [TICKER_MAPPING.get(t, t) for t in PORTFOLIO_TICKERS] + BENCHMARK_TICKERS
+
+# Bulk download (much faster than individual downloads)
+yf_data = yf.download(
+    list(set(YF_TICKERS)),  # Deduplicated list
+    start="2023-10-22",     # Hard-coded start date
+    end="2025-10-22",       # Hard-coded end date
+    group_by='ticker',       # Organize by ticker
+    auto_adjust=True         # Adjust for splits/dividends
+)
 ```
 
-**Error Handling**:
-- Skips invalid tickers (prints warning)
-- Continues if one ticker fails
-- Logs failed tickers for manual review
+**What `auto_adjust=True` does**:
+- **Stock splits**: Adjusts historical prices so charts don't show fake jumps
+  - Example: 2-for-1 split → old prices divided by 2
+- **Dividends**: Adjusts prices for dividend payments
+- **Result**: "Total return" price series (what you actually earned)
 
-**How to run**:
+**Why this matters**: Without adjustments, a 2-for-1 split looks like a 50% crash!
+
+**3. Reverse Mapping (Yahoo Finance → Portfolio Conventions)**
+
+After downloading, map tickers BACK to portfolio conventions for storage:
+
+```python
+# Create reverse lookup dictionary
+REVERSE_MAPPING = {v: k for k, v in TICKER_MAPPING.items()}
+# {"IEF": "US10Y", "XBB.TO": "CAN10Y", "LQD": "CORP5"}
+
+# When processing downloaded data:
+for yf_ticker in downloaded_tickers:
+    portfolio_ticker = REVERSE_MAPPING.get(yf_ticker, yf_ticker)
+    # "IEF" becomes "US10Y" for database storage
+```
+
+**Why reverse map?**
+- Database stores data with YOUR conventions ("US10Y" not "IEF")
+- Reports show familiar names
+- Easy to understand what you actually own
+
+**4. Cache to CSV File**
+
+Saves downloaded prices to intermediate CSV file:
+
+```python
+prices_df.to_csv('data/yf_prices_cache.csv', index=False)
+```
+
+**Cache file format**:
+```csv
+date,ticker,trade_price
+2024-11-01,AAPL,225.50
+2024-11-01,MSFT,412.80
+2024-11-01,US10Y,95.32
+2024-11-02,AAPL,227.10
+```
+
+**Why cache?**
+- **Debugging**: Inspect what was downloaded before it hits database
+- **Recovery**: If database insert fails, data isn't lost
+- **Audit trail**: Know exactly what prices were used
+- **Re-runs**: Can re-insert without re-downloading (saves time/API calls)
+
+**5. Data Validation**
+
+Script validates downloaded data:
+- Checks for empty dataframes (invalid ticker)
+- Handles single-ticker vs multi-ticker response formats
+- Converts dates to consistent format ('YYYY-MM-DD')
+- Filters out rows with missing prices
+
+**Ticker Lists**:
+
+```python
+PORTFOLIO_TICKERS = [
+    "AAPL", "MSFT", "NVDA",      # US Tech
+    "SHOP", "TD", "RY", "BNS",   # Canadian  
+    "SPY", "XIC.TO",             # Index ETFs
+    "US10Y", "CAN10Y", "CORP5"   # Bonds (will be mapped to ETFs)
+]
+
+BENCHMARK_TICKERS = [
+    "XLK",      # Tech sector ETF
+    "XFN.TO",   # Canadian Financials ETF
+    "SPY",      # S&P 500
+    "XIC.TO",   # TSX Composite
+    "XBB.TO",   # Canadian Bonds
+    "AGG"       # US Aggregate Bonds
+]
+```
+
+**Ticker Conventions**:
+- **US stocks/ETFs**: Plain ticker ("AAPL", "SPY")
+- **Canadian stocks/ETFs**: Add ".TO" suffix ("TD.TO", "XIC.TO")
+- **Bonds**: Use portfolio convention ("US10Y") → mapped to ETF
+
+**How to Run**:
 ```powershell
 python src\ingestion\fetch_prices.py
 ```
 
 **Expected Output**:
 ```
-Fetching prices for 10 tickers...
-✓ AAPL: 252 prices
-✓ MSFT: 252 prices
-Inserted 504 new price records
+Downloading yfinance prices for 18 unique tickers...
+[*********************100%***********************]  18 of 18 completed
+Saved 3420 rows to data\yf_prices_cache.csv
 ```
+
+**Error Handling**:
+- **Invalid ticker**: yfinance returns empty → skipped with warning
+- **Network error**: Script fails → retry manually
+- **Delisted stock**: yfinance returns empty → remove from ticker lists
+- **API rate limits**: Yahoo Finance limits ~2000 requests/hour (we use ~1)
+
+**Performance**:
+- 18 tickers × 2 years = ~720 trading days × 18 = ~13,000 data points
+- Download time: 30-60 seconds (network dependent)
+- Cache write: <1 second
+
+**Important Notes**:
+- **No database insert**: This script only downloads and caches
+- **Hard-coded dates**: START_DATE and END_DATE are fixed in code
+- **To add tickers**: Just add to PORTFOLIO_TICKERS or BENCHMARK_TICKERS lists
+- **To add mapping**: Add entry to TICKER_MAPPING dictionary
+
+**Next Step**: Bulk insert from cache CSV to database tables (done separately)
 
 ---
 
@@ -162,7 +452,7 @@ Inserted 504 new price records
 
 **What it does**:
 1. Fetches daily returns from `view_returns` SQL view
-2. Calculates rolling volatility (30/90/180-day windows)
+2. Calculates rolling volatility
 3. Calculates tracking error (portfolio vs benchmark)
 4. Calculates beta (portfolio sensitivity to benchmark)
 5. Inserts results into risk metrics tables
@@ -174,11 +464,6 @@ Inserted 504 new price records
 | **Volatility** | StdDev(Returns) * √252 | Annualized return variability |
 | **Tracking Error** | StdDev(Active Returns) * √252 | Deviation from benchmark |
 | **Beta** | Cov(Portfolio, Benchmark) / Var(Benchmark) | Market sensitivity |
-
-**Rolling Windows**:
-- **30-day**: Recent volatility (captures short-term moves)
-- **90-day**: Quarterly trends (used for risk reporting)
-- **180-day**: Half-year patterns (smooths out noise)
 
 **Database Tables Updated**:
 - `risk.RollingVolatility`: Daily volatility for each window
@@ -384,22 +669,12 @@ Same structure as daily, but aggregated to month-end.
 ### Seed Data
 
 #### `sql/seed_data/seed_dimensions.sql`
-Creates reference tables:
-- `dim.Calendar`: Date dimension (2020-2030)
-- `dim.AssetClass`: List of asset classes (Equity, Fixed Income, etc.)
+Creates reference tables for dates and securities:
+- `dim_dates`: Date dimension with business day flags (used for date-based queries)
+- `dim_securities`: Securities master with ticker, name, sector, currency
+- `dim_benchmarks`: Benchmark securities master
 
-**Why this matters**: Ensures consistent date handling and asset class names.
-
-#### `sql/seed_data/seed_ips_policy.sql`
-Defines Investment Policy Statement targets:
-```sql
-INSERT INTO core.IPSPolicy VALUES
-('US Equity', 0.60, 0.05),  -- 60% target, ±5% tolerance
-('Fixed Income', 0.30, 0.05),
-('Commodities', 0.10, 0.03);
-```
-
-**How to use**: Update these values to match your IPS document.
+**Why this matters**: Provides consistent dimension tables for joins and ensures data quality.
 
 ---
 
@@ -408,21 +683,46 @@ INSERT INTO core.IPSPolicy VALUES
 #### `sql/views/view_returns.sql`
 **Purpose**: Calculate daily returns for portfolio and benchmark
 
-**What it returns**:
+**Critical Views Created**:
+
+**1. `v_portfolio_daily_returns`**: Portfolio-weighted daily returns
 ```sql
-AsOfDate | Portfolio_Return | Benchmark_Return | Active_Return
----------|-----------------|------------------|---------------
-2024-01-02 | 0.0125 | 0.0100 | 0.0025
+SELECT 
+    date,
+    SUM(daily_return * market_value) / SUM(market_value) as daily_return,
+    SUM(market_value) as total_market_value
+FROM historical_portfolio_info
+GROUP BY date
 ```
+
+**This is THE source of truth for portfolio performance**. All risk and attribution calculations use this view.
+
+**2. `v_benchmark_daily_returns`**: Benchmark composite daily returns
+```sql
+-- Aggregates benchmark component returns weighted by holdings
+```
+
+**Why views matter**: 
+- Single calculation logic used everywhere (no duplicate code)
+- Database optimizes view queries automatically
+- Easy to update calculation methodology (change view, affects all downstream)
 
 **Used by**: `compute_risk_metrics.py`, `compute_attribution.py`
 
-#### `sql/views/view_ips_monitoring.sql`
-**Purpose**: Show portfolio drift from IPS targets
+#### `sql/views/view_risk_metrics_latest.sql`
+**Purpose**: Show most recent risk metrics across all windows
 
 **What it returns**:
 ```sql
-AsOfDate | AssetClass | Actual_Weight | Policy_Weight | Drift | Alert
+metric_name    | value_30d | value_90d | value_180d
+---------------|-----------|-----------|------------
+Volatility     | 0.15      | 0.18      | 0.20
+Tracking Error | 0.02      | 0.03      | 0.03
+Beta           | 0.95      | 1.00      | 1.05
+```
+
+**Used for**: Dashboard queries, quick risk snapshots
+
 ---------|-----------|--------------|---------------|------|-------
 2024-11-11 | US Equity | 0.65 | 0.60 | 0.05 | AT_LIMIT
 ```
