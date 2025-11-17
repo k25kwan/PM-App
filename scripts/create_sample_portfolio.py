@@ -1,6 +1,26 @@
 """
+===================================================================================
+TESTING/DEMO SCRIPT - NOT REQUIRED FOR PRODUCTION
+===================================================================================
 Create Sample Portfolio for Testing Dashboard
 Creates a portfolio with realistic holdings dated 1 year ago
+
+⚠️ THIS SCRIPT IS FOR TESTING ONLY ⚠️
+To disable sample portfolio creation:
+1. Simply don't run this script
+2. The dashboard works with any portfolios created through the UI
+
+This script:
+- Creates a portfolio named "My Growth Portfolio"
+- Adds 10 holdings with historical prices from 1 year ago
+- Populates both f_positions and historical_portfolio_info tables
+- Used to test dashboard visualizations during development
+
+To remove sample portfolio:
+DELETE FROM historical_portfolio_info WHERE portfolio_id = (SELECT id FROM portfolios WHERE portfolio_name = 'My Growth Portfolio');
+DELETE FROM f_positions WHERE portfolio_id = (SELECT id FROM portfolios WHERE portfolio_name = 'My Growth Portfolio');
+DELETE FROM portfolios WHERE portfolio_name = 'My Growth Portfolio';
+===================================================================================
 """
 
 import sys

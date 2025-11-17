@@ -1,7 +1,33 @@
 """
+===================================================================================
+TESTING/DEMO SCRIPT - NOT REQUIRED FOR PRODUCTION
+===================================================================================
 Backfill Historical Price Data for Portfolio Holdings
 Downloads daily prices from yfinance and calculates returns for cumulative performance charts
 Forward-fills weekends and holidays to match ai-risk-demo behavior
+
+⚠️ THIS SCRIPT IS FOR TESTING ONLY ⚠️
+To disable historical backfilling:
+1. Simply don't run this script
+2. The dashboard works with current portfolio data without historical backfill
+3. Performance charts will show data from the date portfolios are created forward
+
+This script:
+- Downloads 1 year of historical prices from yfinance
+- Forward-fills weekends/holidays for continuous time series
+- Calculates daily returns and cumulative returns
+- Populates historical_portfolio_info table for testing
+- Used to test performance charts during development
+
+Production Approach:
+- Users create portfolios through the UI
+- historical_portfolio_info gets populated via daily price ingestion (fetch_prices.py)
+- Performance charts show data from creation date forward (not backward)
+- No need for historical backfilling in live system
+
+To clear backfilled data:
+DELETE FROM historical_portfolio_info WHERE portfolio_id = [portfolio_id];
+===================================================================================
 """
 
 import sys
