@@ -31,8 +31,10 @@ if 'benchmarks' not in st.session_state:
         if benchmarks.load_from_cache():
             st.session_state.benchmarks = benchmarks
             st.session_state.benchmarks_available = True
-            # Also store S&P 500 tickers for screening
-            st.session_state.sp500_tickers = benchmarks.get_sp1500_tickers()
+            # Fetch fresh S&P 500 tickers from Wikipedia (not from cache)
+            fresh_tickers = benchmarks.get_sp1500_tickers()
+            st.session_state.sp500_tickers = fresh_tickers
+            print(f"DEBUG: Fetched {len(fresh_tickers)} tickers from Wikipedia")
         else:
             st.session_state.benchmarks_available = False
             st.session_state.sp500_tickers = []
@@ -43,11 +45,36 @@ if 'benchmarks' not in st.session_state:
 st.title("Security Screening")
 st.markdown("Discover quality stocks from the S&P 500 using fundamental factor analysis")
 
+# Show ticker count for debugging
+if st.session_state.get('sp500_tickers'):
+    st.caption(f"S&P 500 Universe: {len(st.session_state.sp500_tickers)} tickers available")
+
+# Add cache clearing button
+col1, col2 = st.columns([3, 1])
+with col2:
+    if st.button("🔄 Clear Cache & Reload", help="Clear all cached data and reload benchmarks"):
+        # Clear all screening-related cache
+        keys_to_clear = ['factor_scores_cache', 'style_screening_results', 'score_type', 
+                        'benchmarks', 'benchmarks_available', 'sp500_tickers']
+        for key in keys_to_clear:
+            if key in st.session_state:
+                del st.session_state[key]
+        st.success("Cache cleared! Page will reload with fresh data.")
+        st.rerun()
+
 def get_ticker_info(ticker, include_fundamentals=False):
     """Fetch ticker info from yfinance for equities"""
     try:
         stock = yf.Ticker(ticker)
         info = stock.info
+        
+        if include_fundamentals:
+            # Return the FULL yfinance info dict for factor scoring
+            # score_stock_from_info() needs all the raw yfinance fields
+            # Add ticker field since yfinance info doesn't include it
+            full_info = info.copy()
+            full_info['ticker'] = ticker
+            return full_info
         
         # Get sector from yfinance
         sector = info.get('sector', 'Unknown')
@@ -61,19 +88,6 @@ def get_ticker_info(ticker, include_fundamentals=False):
             'country': info.get('country', 'Unknown'),
             'price': info.get('currentPrice', info.get('regularMarketPrice', 0))
         }
-        
-        if include_fundamentals:
-            # Add fundamental metrics for equities
-            base_info.update({
-                'pe_ratio': info.get('trailingPE'),
-                'pb_ratio': info.get('priceToBook'),
-                'dividend_yield': info.get('dividendYield'),
-                'profit_margin': info.get('profitMargins'),
-                'revenue_growth': info.get('revenueGrowth'),
-                'roe': info.get('returnOnEquity'),
-                'debt_to_equity': info.get('debtToEquity'),
-                'ev_ebitda': info.get('enterpriseToEbitda')
-            })
         
         return base_info
     except Exception as e:
@@ -107,6 +121,9 @@ def is_bad_apple(info):
     Filter out obvious "bad apples" - companies with red flags
     This is NOT scoring, just eliminating clear problems
     
+    For S&P 500 stocks, filters should be VERY lenient - only catch data errors
+    and truly distressed companies, not just expensive/leveraged ones.
+    
     Returns: (is_bad: bool, reason: str)
     """
     
@@ -131,28 +148,30 @@ def is_bad_apple(info):
             return True, f"Unprofitable ({ticker} has negative earnings)"
     
     # Rule 2: Extreme debt levels (non-financials)
+    # Relaxed from 300% to 1000% - S&P 500 companies can handle leverage
     debt_equity = safe_float(info.get('debt_to_equity'))
     sector = info.get('sector', '')
     if debt_equity is not None and sector not in ['Financial Services', 'Financials', 'Real Estate']:
-        if debt_equity > 300:  # 300% D/E is danger zone for non-financials
+        if debt_equity > 1000:  # 1000% D/E is truly excessive
             return True, f"Excessive debt ({ticker} D/E = {debt_equity:.0f}%)"
     
     # Rule 3: Extremely low ROE (return on equity) = inefficient capital use
+    # Only filter truly terrible cases (losing >50% on equity)
     roe = safe_float(info.get('roe'))
-    if roe is not None and roe < -0.20:  # Losing >20% on equity
+    if roe is not None and roe < -0.50:  # Losing >50% on equity
         return True, f"Poor returns ({ticker} ROE = {roe*100:.1f}%)"
     
-    # Rule 4: Absurd valuations (likely data error or bubble stock)
-    if pe_ratio is not None and pe_ratio > 500:
-        return True, f"Unrealistic valuation ({ticker} P/E = {pe_ratio:.0f})"
-    
+    # Rule 4: Absurd valuations - removed P/E filter entirely
+    # S&P 500 can have high P/E stocks (growth, momentum)
+    # Keep P/B filter but make it more lenient
     pb_ratio = safe_float(info.get('pb_ratio'))
-    if pb_ratio is not None and pb_ratio > 50 and sector not in ['Technology', 'Communication Services']:
+    if pb_ratio is not None and pb_ratio > 100 and sector not in ['Technology', 'Communication Services']:
         return True, f"Extreme P/B ratio ({ticker} P/B = {pb_ratio:.1f})"
     
     # Rule 5: Negative profit margins (unless growth/startup)
+    # Only filter if losing >50% on revenue (truly unsustainable)
     profit_margin = safe_float(info.get('profit_margin'))
-    if profit_margin is not None and profit_margin < -0.30:  # Losing >30% on revenue
+    if profit_margin is not None and profit_margin < -0.50:  # Losing >50% on revenue
         if sector not in ['Technology', 'Healthcare', 'Communication Services']:
             return True, f"Unsustainable losses ({ticker} margin = {profit_margin*100:.1f}%)"
     
@@ -190,83 +209,81 @@ if st.session_state.universe_cache is None and st.button("Load S&P 500 Universe 
             st.stop()
         
         all_tickers = st.session_state.sp500_tickers
-        
-        st.success(f"Loaded {len(all_tickers):,} tickers from S&P 500")
     
     # Screen with bad apple elimination
-    with st.spinner("Screening securities and filtering out bad apples..."):
-        estimated_time = len(all_tickers) * 0.8 / 60  # ~0.8 seconds per ticker
-        st.info(f"Screening {len(all_tickers):,} securities (estimated time: {estimated_time:.1f} minutes)...")
+    estimated_time = len(all_tickers) * 0.8 / 60  # ~0.8 seconds per ticker
+    
+    # Always fetch fundamentals for factor scoring
+    include_fundamentals = True
+    
+    # Track statistics
+    screened_securities = []
+    bad_apples = []
+    filtered_count = {'bad_apple': 0}
+    
+    # Cache for factor scores (for fast style ranking later)
+    factor_scores_cache = {}
+    
+    # Get benchmarks if available for factor scoring
+    benchmarks_data = None
+    if st.session_state.get('benchmarks_available', False):
+        benchmarks_data = st.session_state.benchmarks.data
+    
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    
+    for i, ticker in enumerate(all_tickers):
+        # Update progress
+        progress = (i + 1) / len(all_tickers)
+        progress_bar.progress(progress)
         
-        # Always fetch fundamentals for factor scoring
-        include_fundamentals = True
+        # Calculate time remaining
+        elapsed_tickers = i + 1
+        remaining_tickers = len(all_tickers) - elapsed_tickers
+        time_remaining = remaining_tickers * 0.8 / 60  # minutes
         
-        # Track statistics
-        screened_securities = []
-        bad_apples = []
-        filtered_count = {'bad_apple': 0}
+        status_text.text(f"Screening {elapsed_tickers}/{len(all_tickers)} stocks... ({time_remaining:.1f} min remaining)")
         
-        # Cache for factor scores (for fast style ranking later)
-        factor_scores_cache = {}
+        info = get_ticker_info(ticker, include_fundamentals=include_fundamentals)
         
-        # Get benchmarks if available for factor scoring
-        benchmarks_data = None
-        if st.session_state.get('benchmarks_available', False):
-            benchmarks_data = st.session_state.benchmarks.data
+        # BAD APPLE FILTER - eliminate obvious problems
+        is_bad, reason = is_bad_apple(info)
+        if is_bad:
+            filtered_count['bad_apple'] += 1
+            bad_apples.append({'ticker': ticker, 'reason': reason})
+            continue
         
-        progress_bar = st.progress(0)
-        progress_text = st.empty()
+        # Calculate factor scores for advanced analysis (uses already-fetched info)
+        if benchmarks_data:
+            try:
+                # Use the yfinance info we already fetched - no additional API call
+                factor_scores = score_stock_from_info(ticker, info, benchmarks_data)
+                if factor_scores:
+                    factor_scores_cache[ticker] = factor_scores
+            except Exception as e:
+                pass  # Skip if factor scoring fails
         
-        for i, ticker in enumerate(all_tickers):
-            if i % 10 == 0:  # Update every 10 tickers to avoid UI lag
-                progress_text.text(f"Analyzing {ticker}... ({i+1}/{len(all_tickers):,})")
-                progress_bar.progress((i + 1) / len(all_tickers))
-            
-            info = get_ticker_info(ticker, include_fundamentals=include_fundamentals)
-            
-            # BAD APPLE FILTER - eliminate obvious problems
-            is_bad, reason = is_bad_apple(info)
-            if is_bad:
-                filtered_count['bad_apple'] += 1
-                bad_apples.append({'ticker': ticker, 'reason': reason})
-                continue
-            
-            # Calculate factor scores for advanced analysis (uses already-fetched info)
-            if benchmarks_data:
-                try:
-                    # Use the yfinance info we already fetched - no additional API call
-                    factor_scores = score_stock_from_info(ticker, info, benchmarks_data)
-                    if factor_scores:
-                        factor_scores_cache[ticker] = factor_scores
-                except Exception as e:
-                    pass  # Skip if factor scoring fails
-            
-            screened_securities.append(info)
+        screened_securities.append(info)
+    
+    progress_bar.empty()
+    status_text.empty()
+    
+    # Show final result
+    st.success(f"✓ Screening complete! Found {len(screened_securities)} quality stocks, filtered out {len(bad_apples)} bad apples")
+    
+    # Display results
+    if screened_securities:
+        df = pd.DataFrame(screened_securities)
         
-        progress_bar.empty()
-        progress_text.empty()
+        # Save to cache
+        st.session_state.universe_cache = df
         
-        # Show filtering statistics
-        st.success(f"Screening complete! Found **{len(screened_securities)}** quality securities")
+        # Save bad apples to session state for persistent display
+        st.session_state.bad_apples = bad_apples
         
-        # Bad apple debugging - show all filtered stocks
-        if bad_apples:
-            with st.expander(f"Bad Apples Filtered Out ({len(bad_apples)} stocks)", expanded=False):
-                st.markdown("**All S&P 500 stocks filtered out by bad apple rules:**")
-                bad_apple_df = pd.DataFrame(bad_apples)
-                st.dataframe(bad_apple_df, use_container_width=True, hide_index=True)
-        
-        # Display results
-        if screened_securities:
-            df = pd.DataFrame(screened_securities)
-            
-            # Save to cache
-            st.session_state.universe_cache = df
-            
-            # Save factor scores cache for fast style ranking
-            if factor_scores_cache:
-                st.session_state.factor_scores_cache = factor_scores_cache
-                st.success(f"Cached factor scores for {len(factor_scores_cache)} stocks (enables instant style ranking)")
+        # Save factor scores cache for fast style ranking
+        if factor_scores_cache:
+            st.session_state.factor_scores_cache = factor_scores_cache
         
         else:
             st.warning("No securities passed the bad apple filter.")
@@ -275,6 +292,14 @@ if st.session_state.universe_cache is None and st.button("Load S&P 500 Universe 
 # DISPLAY RESULTS (outside button block - uses cache)
 # ============================================================================
 st.markdown("---")
+
+# Show bad apples if available (persists across interactions)
+if st.session_state.get('bad_apples'):
+    bad_apples = st.session_state.bad_apples
+    with st.expander(f"⚠️ View {len(bad_apples)} filtered stocks (Bad Apples)", expanded=False):
+        bad_apple_df = pd.DataFrame(bad_apples)
+        st.dataframe(bad_apple_df, use_container_width=True, hide_index=True)
+        st.caption("These stocks were filtered out during screening. Review the reasons to ensure quality companies aren't incorrectly excluded.")
 
 if st.session_state.universe_cache is not None:
     df = st.session_state.universe_cache
@@ -309,8 +334,9 @@ if st.session_state.universe_cache is not None:
                 )
             
             with col2:
-                # Sector filter option
-                all_sectors = sorted(df['sector'].unique().tolist())
+                # Sector filter option - convert to strings and filter out NaN/None
+                sectors = df['sector'].dropna().astype(str).unique().tolist()
+                all_sectors = sorted([s for s in sectors if s and s != 'nan'])
                 sector_filter = st.selectbox(
                     "Sector (Optional)",
                     options=['All Sectors'] + all_sectors,

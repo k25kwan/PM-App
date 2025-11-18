@@ -67,8 +67,30 @@ class SectorBenchmarks:
         try:
             # Fetch S&P 500 list from Wikipedia
             url = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'
-            tables = pd.read_html(url)
-            sp500_table = tables[0]
+            
+            # Add User-Agent header to avoid 403 Forbidden
+            # We need to use urllib to set headers since storage_options doesn't work in all pandas versions
+            import urllib.request
+            
+            req = urllib.request.Request(url)
+            req.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36')
+            
+            # Read tables with proper headers
+            with urllib.request.urlopen(req) as response:
+                tables = pd.read_html(response.read())
+            
+            print(f"Found {len(tables)} tables on Wikipedia")
+            
+            # Find the table with Symbol column (usually table index 1)
+            sp500_table = None
+            for i, table in enumerate(tables):
+                if 'Symbol' in table.columns:
+                    sp500_table = table
+                    print(f"Found S&P 500 table at index {i} with {len(table)} stocks")
+                    break
+            
+            if sp500_table is None:
+                raise ValueError("Could not find Symbol column in Wikipedia tables")
             
             # Extract tickers
             tickers = sp500_table['Symbol'].tolist()
@@ -76,12 +98,12 @@ class SectorBenchmarks:
             # Clean tickers (remove any dots - yfinance uses dashes)
             tickers = [ticker.replace('.', '-') for ticker in tickers]
             
-            print(f"✅ Fetched {len(tickers)} S&P 500 tickers from Wikipedia")
+            print(f"Successfully fetched {len(tickers)} S&P 500 tickers from Wikipedia")
             
             return tickers
             
         except Exception as e:
-            print(f"⚠️  Error fetching S&P 500 list from Wikipedia: {e}")
+            print(f"Error fetching S&P 500 list from Wikipedia: {e}")
             print("   Falling back to hardcoded sample...")
             
             # Fallback to expanded sample if Wikipedia fails
@@ -90,7 +112,7 @@ class SectorBenchmarks:
                 'AAPL', 'MSFT', 'GOOGL', 'GOOG', 'META', 'NVDA', 'AVGO', 'CSCO', 'ORCL', 'CRM',
                 'ADBE', 'AMD', 'INTC', 'IBM', 'NOW', 'INTU', 'QCOM', 'TXN', 'AMAT', 'MU',
                 'PANW', 'PLTR', 'SNOW', 'TEAM', 'DDOG', 'CRWD', 'ZS', 'NET', 'OKTA', 'FTNT',
-                'DELL', 'HPQ', 'AAOI', 'ACN', 'ACIW', 'ADSK', 'AEIS', 'AKAM', 'ALRM', 'ANSS',
+                'DELL', 'HPQ', 'ACN', 'ACIW', 'ADSK', 'AEIS', 'AKAM', 'ALRM',
                 
                 # Healthcare (expanded)
                 'UNH', 'JNJ', 'LLY', 'ABBV', 'MRK', 'PFE', 'TMO', 'ABT', 'DHR', 'CVS',
@@ -110,7 +132,7 @@ class SectorBenchmarks:
                 # Consumer Defensive (expanded)
                 'WMT', 'PG', 'KO', 'PEP', 'COST', 'PM', 'MO', 'CL', 'MDLZ', 'GIS',
                 'KHC', 'K', 'HSY', 'SYY', 'TSN', 'CAG', 'CPB', 'CHD', 'CLX', 'MKC',
-                'KMB', 'KR', 'SJM', 'HRL', 'TAP', 'BF-B', 'EL', 'CL', 'ADM', 'BG',
+                'KMB', 'KR', 'SJM', 'HRL', 'TAP', 'BF-B', 'EL', 'ADM', 'BG',
                 
                 # Industrials (expanded)
                 'CAT', 'BA', 'HON', 'UNP', 'RTX', 'UPS', 'LMT', 'DE', 'GE', 'MMM',
@@ -120,7 +142,7 @@ class SectorBenchmarks:
                 # Energy (expanded)
                 'XOM', 'CVX', 'COP', 'SLB', 'EOG', 'MPC', 'PSX', 'VLO', 'OXY', 'PXD',
                 'KMI', 'WMB', 'HAL', 'BKR', 'DVN', 'FANG', 'MRO', 'APA', 'CTRA', 'OVV',
-                'HES', 'OKE', 'TRGP', 'ET', 'EPD', 'LNG', 'CHRD', 'PR', 'EQT', 'CNX',
+                'OKE', 'TRGP', 'ET', 'EPD', 'LNG', 'CHRD', 'PR', 'EQT', 'CNX',
                 
                 # Utilities (expanded)
                 'NEE', 'DUK', 'SO', 'D', 'AEP', 'EXC', 'SRE', 'XEL', 'ED', 'PEG',
@@ -139,7 +161,7 @@ class SectorBenchmarks:
                 
                 # Communication Services (expanded)
                 'META', 'GOOGL', 'GOOG', 'NFLX', 'DIS', 'CMCSA', 'VZ', 'T', 'TMUS', 'CHTR',
-                'EA', 'TTWO', 'WBD', 'PARA', 'MTCH', 'NWSA', 'FOX', 'FOXA', 'OMC', 'IPG',
+                'EA', 'TTWO', 'WBD', 'MTCH', 'NWSA', 'FOX', 'FOXA', 'OMC', 'IPG',
                 'PINS', 'SNAP', 'ROKU', 'ZM', 'TWLO', 'SPOT', 'LYFT', 'UBER', 'DASH', 'ABNB'
             ]
             
@@ -409,7 +431,7 @@ class SectorBenchmarks:
             self.data = json.load(f)
         
         metadata = self.data.get('metadata', {})
-        print(f"\n✅ Loaded sector benchmarks from cache")
+        print(f"\nLoaded sector benchmarks from cache")
         print(f"   Created: {metadata.get('created_at', 'Unknown')}")
         print(f"   Total stocks: {metadata.get('total_stocks', 0)}")
         print(f"   Sectors: {len(metadata.get('sectors', []))}")
