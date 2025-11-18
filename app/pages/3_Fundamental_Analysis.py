@@ -1,5 +1,5 @@
 """
-Security Screening  
+Fundamental Analysis  
 Filter universe using real yfinance data based on user preferences
 Uses comprehensive ticker universe from external sources
 Filters out "bad apples" using fundamental quality screens
@@ -22,7 +22,7 @@ from src.analytics.sector_benchmarks import SectorBenchmarks
 from src.analytics.factor_scoring import score_stock_all_factors, score_stock_from_info
 from src.analytics.investment_styles import get_top_stocks_by_style, rank_stocks_by_style_cached, rank_stocks_by_style_normalized, INVESTMENT_STYLES
 
-st.set_page_config(page_title="Find Investments", layout="wide")
+st.set_page_config(page_title="Fundamental Analysis", layout="wide")
 
 # Initialize sector benchmarks (cache in session state)
 if 'benchmarks' not in st.session_state:
@@ -42,7 +42,7 @@ if 'benchmarks' not in st.session_state:
         st.session_state.benchmarks_available = False
         st.session_state.sp500_tickers = []
 
-st.title("Security Screening")
+st.title("Fundamental Analysis")
 st.markdown("Discover quality stocks from the S&P 500 using fundamental factor analysis")
 
 # Show ticker count for debugging

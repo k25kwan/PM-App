@@ -17,6 +17,261 @@
 
 ---
 
+## Development Roadmap
+
+### Current State (✅ Implemented)
+- **Phase 0: Foundation (Nov 2025)**
+  - ✅ Red flag detection (5 hard stops: unprofitable+debt, negative equity, penny stocks, extreme volatility, zombies)
+  - ✅ Multi-style factor scoring (Growth, Value, Quality, Momentum styles with percentile rankings)
+  - ✅ S&P 500/1500 universe fetching (Wikipedia-based, 503 stocks)
+  - ✅ Sector-relative benchmarking (dynamic benchmarks, auto-refresh)
+  - ✅ Security screening UI (Streamlit with style selection, sector filtering)
+  - ✅ Basic news sentiment (keyword-based, 0-100 score)
+  - ✅ Competitive moat heuristics (margin-based proxy)
+
+### Next: Phase 1 - Enhanced News Sentiment (Dec 2025 - Jan 2026)
+
+**Goal**: Upgrade from keyword matching to AI-powered sentiment analysis with catalyst detection
+
+**Why This Phase:**
+- ✅ Leverage existing AI extraction framework from ai-risk-demo repository
+- ✅ Placeholder already exists (`calculate_news_sentiment()`) - upgrade in place
+- ✅ High ROI: Catches catalysts before market reacts (M&A, FDA approvals, earnings surprises)
+- ✅ Natural fit: Framework already weights `news_sentiment_pct` at 10-20% in style scoring
+
+**Implementation (2-3 weeks):**
+
+```python
+# Enhanced news sentiment module
+src/analytics/news_sentiment.py
+
+def analyze_news_sentiment_ai(ticker):
+    """
+    AI-powered news sentiment analysis
+    
+    Features:
+    1. Pull headlines from multiple sources (Yahoo Finance, news APIs)
+    2. AI extraction: Use LLM to extract:
+       - Sentiment score (0-100)
+       - Key facts/numbers mentioned
+       - Event type (earnings, M&A, lawsuit, product launch, etc.)
+    3. Cross-reference: If no numbers, check multiple articles for validation
+    4. Historical matching: Compare to similar events from past
+    
+    Returns:
+        {
+            'sentiment_score': 0-100,
+            'confidence': 'High' | 'Medium' | 'Low',
+            'key_events': ['FDA approval pending', 'CEO change announced'],
+            'catalyst_flags': ['earnings_beat', 'merger_rumor', 'product_launch'],
+            'articles_analyzed': 10,
+            'dominant_narrative': "Positive momentum from AI product launch"
+        }
+    """
+    # Reuse logic from ai-risk-demo:
+    # - fetch_headlines_by_keyword()
+    # - extract_scenario_values_ai()
+    # - cross_reference_articles()
+    # - find_similar_historical_events()
+```
+
+**Integration Points:**
+- Replace `calculate_news_sentiment()` in `factor_scoring.py`
+- Add catalyst flags to investment thesis generation
+- Surface in Security Screening results table
+- Store sentiment history in database for trend analysis
+
+**Expected Outcomes:**
+- 📈 Catch positive catalysts 1-3 days before market reaction
+- 🚨 Avoid disasters (lawsuit announcements, investigation news)
+- 📊 Validate fundamental signals with market narrative
+- 🎯 Improve style scoring accuracy (better signal-to-noise)
+
+**Deliverables:**
+- [ ] `src/analytics/news_sentiment.py` (AI-powered sentiment analysis)
+- [ ] Integration with `factor_scoring.py` (replace keyword-based function)
+- [ ] Add to Security Screening UI (show catalyst flags)
+- [ ] Database schema update (store sentiment history)
+- [ ] Test with 100 stocks, validate accuracy vs manual review
+
+---
+
+### Future: Phase 2 - High-Yield Indicators (Q1 2026)
+
+**Goal**: Add proven alpha generators beyond basic fundamentals
+
+**Priority 1: Catalyst Detection (2 weeks)**
+```python
+# Systematic catalyst identification
+src/analytics/catalyst_detector.py
+
+def detect_catalysts(ticker):
+    """
+    Identify upcoming events that could move stock price
+    
+    Catalysts detected:
+    - Earnings dates (next 2-4 weeks = volatility opportunity)
+    - Analyst upgrades/downgrades (momentum signal)
+    - Product launches (from news sentiment + company calendar)
+    - Regulatory approvals (FDA, patent filings)
+    - M&A activity (rumors from news, unusual volume)
+    
+    Returns:
+        {
+            'upcoming_earnings': datetime or None,
+            'days_to_earnings': int,
+            'recent_upgrades': 3,  # count in last 30 days
+            'product_launches': ['iPhone 16 launch in 2 weeks'],
+            'regulatory_events': ['FDA decision pending'],
+            'catalyst_score': 0-100,
+            'timing_signal': 'Strong' | 'Moderate' | 'Weak'
+        }
+    """
+```
+
+**Priority 2: Insider Trading Signals (3 weeks)**
+```python
+# Track insider buying/selling patterns
+src/analytics/insider_signals.py
+
+def analyze_insider_activity(ticker):
+    """
+    Detect meaningful insider trading patterns
+    
+    Data sources:
+    - SEC Form 4 filings (EDGAR API)
+    - Alternative: Quiver Quantitative API (paid but cleaner)
+    
+    Signals:
+    - Cluster buying: 3+ insiders buying within 30 days (bullish)
+    - CEO purchase: CEO buying with own money (strongest signal)
+    - Buy-to-sell ratio: Recent buys vs sells (>2:1 = bullish)
+    - Unusual size: Purchases >$1M or >10% of holdings
+    
+    Returns:
+        {
+            'insider_signal': 'Strong Buy' | 'Buy' | 'Neutral' | 'Sell' | 'Strong Sell',
+            'recent_buyers': 5,  # count of insiders buying last 90 days
+            'recent_sellers': 1,
+            'buy_sell_ratio': 5.0,
+            'largest_purchase': {'insider': 'CEO', 'amount': '$2.5M', 'date': '2025-01-15'},
+            'insider_score': 0-100,
+            'confidence': 'High' | 'Medium' | 'Low'
+        }
+    """
+```
+
+**Priority 3: Competitive Moat Enhancement (2 weeks)**
+```python
+# Upgrade from margin-based heuristics to multi-factor moat assessment
+src/analytics/moat_assessment.py
+
+def assess_competitive_moat_enhanced(ticker):
+    """
+    Systematic competitive advantage assessment
+    
+    Current: Margin-based proxy (profit margin >25% = strong moat)
+    Enhanced: Multi-factor analysis
+    
+    Moat indicators:
+    1. Pricing Power: Sustained high margins (5yr avg >20%)
+    2. Returns Consistency: ROE >15% for 5+ years
+    3. Market Share: Revenue growth vs sector growth (gaining share?)
+    4. Switching Costs: SaaS (high), Consumer Staples (medium), Commodities (low)
+    5. Network Effects: Number of users/transactions (if available)
+    6. Brand Strength: Premium P/E vs sector (brand commands premium)
+    
+    Returns:
+        {
+            'moat_type': 'Brand Power' | 'Network Effects' | 'Switching Costs' | 
+                        'Cost Advantage' | 'Regulatory' | 'Weak/Commodity',
+            'moat_strength': 'Wide' | 'Narrow' | 'None',
+            'moat_score': 0-100,
+            'key_advantages': ['35% margins for 10 years', 'Market share gains'],
+            'moat_risks': ['New competitor with lower prices', 'Tech disruption']
+        }
+    """
+```
+
+**Integration:**
+- Add to `INVESTMENT_STYLES` weights (catalyst_score, insider_score, moat_score)
+- Surface in thesis generation (strengthen conviction)
+- Create alerts: "3 insiders bought AAPL in last week" → notification
+
+**Expected Outcomes:**
+- 🎯 Insider buying: 15-20% alpha over 12 months (proven academic research)
+- 📅 Catalyst timing: Enter positions 2-4 weeks before earnings (volatility opportunity)
+- 🏰 Moat assessment: Avoid value traps (cheap but dying businesses)
+
+---
+
+### Future: Phase 3 - Technical Analysis (Optional, Q2 2026)
+
+**Goal**: Add entry/exit timing signals (only if needed for frequent trading)
+
+**⚠️ Build Only If:**
+- You find fundamental + sentiment is missing timing precision
+- You want to avoid buying stocks in clear downtrends
+- You trade more frequently than buy-and-hold
+
+**Minimal Viable Technical Module:**
+```python
+# Simple, proven indicators only (no overfitting)
+src/analytics/technical_signals.py
+
+def calculate_technical_signals(ticker):
+    """
+    Proven technical indicators for timing
+    
+    Focus on 4 reliable signals:
+    1. RSI (14-period): Overbought (>70) / Oversold (<30)
+    2. MACD Crossover: Trend change detection
+    3. Volume Surge: >2x average = unusual activity
+    4. Support/Resistance: Key price levels from 52-week range
+    
+    Returns:
+        {
+            'rsi_14': 45.3,
+            'rsi_signal': 'Neutral',  # Oversold | Neutral | Overbought
+            'macd_signal': 'Bullish',  # Bullish Crossover | Neutral | Bearish
+            'volume_surge': False,     # True if 2x avg volume
+            'support_level': 145.20,   # Recent low
+            'resistance_level': 182.50, # Recent high
+            'technical_grade': 'B+',    # A+ (all bullish) to F (all bearish)
+            'entry_signal': 'Good' | 'Wait' | 'Avoid'
+        }
+    """
+```
+
+**Integration:**
+- Use as POST-FILTER, not core scoring (avoid overfitting)
+- Flag stocks breaking down: "AAPL has strong fundamentals but RSI=75 (overbought), wait for pullback"
+- Entry timing: "MSFT scored 85/100 on Growth style, RSI=32 (oversold) → Strong Buy"
+
+**Expected Outcomes:**
+- ⏱️ Improve entry/exit timing (avoid buying at tops)
+- 🚫 Avoid falling knives (strong fundamentals but broken technicals)
+- 📊 Complement fundamentals with market sentiment
+
+---
+
+### Development Philosophy (Unchanged)
+
+**Every enhancement must follow:**
+1. ✅ **Simple > Complex** (150 lines of code, not 400)
+2. ✅ **Proven > Novel** (academic research, not experimental)
+3. ✅ **Auditable** ("Why this score?" = instant answer)
+4. ✅ **Low Maintenance** (auto-updating, minimal tweaking)
+5. ✅ **Post-Filtering** (don't change core scoring weights)
+
+**What We Still Avoid:**
+- ❌ Machine learning models (black box, overfitting risk)
+- ❌ Complex backtesting (curve-fitting to historical data)
+- ❌ Proprietary data dependencies (expensive, unreliable)
+- ❌ Over-engineering (every line of code is a liability)
+
+---
+
 ## The Core Challenge
 **Goal**: Make investment decisions in <30 minutes with the same (or better) information quality as someone spending hours/days on manual research.
 
