@@ -311,9 +311,33 @@ class SectorBenchmarks:
             
             print(f"  {sector}: {len(sector_df)} stocks, avg {sum(metric_counts.values())/len(metric_counts):.0f} metrics per stock")
         
+        # Build cross-sector distributions (all stocks combined for z-score normalization)
+        print(f"\n{'='*80}")
+        print("CALCULATING CROSS-SECTOR DISTRIBUTIONS (for normalized comparison)")
+        print(f"{'='*80}\n")
+        
+        all_sectors = {
+            'roe': df['roe'].dropna().tolist(),
+            'profit_margin': df['profit_margin'].dropna().tolist(),
+            'roic': df['roic'].dropna().tolist(),
+            'revenue_growth': df['revenue_growth'].dropna().tolist(),
+            'earnings_growth': df['earnings_growth'].dropna().tolist(),
+            'pe': df['pe'].dropna().tolist(),
+            'pb': df['pb'].dropna().tolist(),
+            'fcf_yield': df['fcf_yield'].dropna().tolist(),
+            'debt_equity': df['debt_equity'].dropna().tolist(),
+            'current_ratio': df['current_ratio'].dropna().tolist()
+        }
+        
+        print(f"  Cross-sector stats:")
+        for metric, values in all_sectors.items():
+            if values:
+                print(f"    {metric:20s}: {len(values):3d} stocks, mean={np.mean(values):.3f}, std={np.std(values):.3f}")
+        
         # Store in data attribute
         self.data = {
             'distributions': distributions,
+            'all_sectors': all_sectors,  # NEW: Cross-sector distributions for z-score
             'metadata': {
                 'total_stocks': len(stocks_data),
                 'total_fetched': len(all_tickers),

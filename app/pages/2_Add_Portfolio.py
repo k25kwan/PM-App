@@ -68,6 +68,22 @@ def create_portfolio(user_id, portfolio_name, description):
         st.error(f"Error creating portfolio: {e}")
         return None
 
+def update_portfolio_name(portfolio_id, new_name, new_description):
+    """Update portfolio name and description"""
+    try:
+        with get_conn() as cn:
+            cursor = cn.cursor()
+            cursor.execute("""
+                UPDATE portfolios
+                SET portfolio_name = ?, description = ?
+                WHERE id = ?
+            """, (new_name, new_description, portfolio_id))
+            cn.commit()
+        return True
+    except Exception as e:
+        st.error(f"Error updating portfolio: {e}")
+        return False
+
 def delete_portfolio(portfolio_id):
     """Delete a portfolio and all its holdings"""
     try:
@@ -82,6 +98,29 @@ def delete_portfolio(portfolio_id):
         return True
     except Exception as e:
         st.error(f"Error deleting portfolio: {e}")
+        return False
+
+def delete_holding(portfolio_id, ticker, holding_date):
+    """Delete a specific holding from a portfolio"""
+    try:
+        with get_conn() as cn:
+            cursor = cn.cursor()
+            # Delete from historical_portfolio_info
+            cursor.execute("""
+                DELETE FROM historical_portfolio_info 
+                WHERE portfolio_id = ? AND ticker = ? AND date = ?
+            """, (portfolio_id, ticker, holding_date))
+            
+            # Delete from f_positions if it's the current position
+            cursor.execute("""
+                DELETE FROM f_positions 
+                WHERE portfolio_id = ? AND ticker = ?
+            """, (portfolio_id, ticker))
+            
+            cn.commit()
+        return True
+    except Exception as e:
+        st.error(f"Error deleting holding: {e}")
         return False
 
 def load_portfolio_holdings(portfolio_id):
@@ -253,11 +292,53 @@ if st.session_state.get('show_create_form', False):
 if 'selected_portfolio_id' in st.session_state:
     portfolio_id = st.session_state.selected_portfolio_id
     
-    # Get portfolio name
-    portfolio_name = next((p['name'] for p in portfolios if p['id'] == portfolio_id), "Portfolio")
+    # Get portfolio details
+    portfolio = next((p for p in portfolios if p['id'] == portfolio_id), None)
+    if not portfolio:
+        st.error("Portfolio not found")
+        del st.session_state.selected_portfolio_id
+        st.rerun()
+    
+    portfolio_name = portfolio['name']
+    portfolio_description = portfolio.get('description', '')
     
     st.markdown("---")
-    st.markdown(f"## {portfolio_name}")
+    
+    # Portfolio header with edit option
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.markdown(f"## {portfolio_name}")
+        if portfolio_description:
+            st.caption(portfolio_description)
+    with col2:
+        if st.button("Edit Name", key="edit_portfolio_name"):
+            st.session_state.show_edit_portfolio = True
+            st.rerun()
+    
+    # Show edit form if requested
+    if st.session_state.get('show_edit_portfolio', False):
+        st.markdown("### Edit Portfolio Details")
+        with st.form("edit_portfolio_form"):
+            new_name = st.text_input("Portfolio Name", value=portfolio_name)
+            new_description = st.text_area("Description", value=portfolio_description)
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                submitted = st.form_submit_button("Save Changes", type="primary")
+            with col2:
+                cancel = st.form_submit_button("Cancel")
+            
+            if submitted and new_name:
+                if update_portfolio_name(portfolio_id, new_name, new_description):
+                    st.success(f"Portfolio updated to '{new_name}'")
+                    st.session_state.show_edit_portfolio = False
+                    st.rerun()
+            
+            if cancel:
+                st.session_state.show_edit_portfolio = False
+                st.rerun()
+        
+        st.markdown("---")
     
     # Load holdings
     holdings_df = load_portfolio_holdings(portfolio_id)
@@ -266,12 +347,28 @@ if 'selected_portfolio_id' in st.session_state:
         st.info("This portfolio is empty. Add your first holding below.")
     else:
         st.markdown(f"### Current Holdings ({len(holdings_df)} positions)")
-        # Format for display
-        display_df = holdings_df.copy()
-        display_df['market_value'] = display_df['market_value'].apply(lambda x: f"${x:,.2f}")
-        display_df['date'] = pd.to_datetime(display_df['date']).dt.strftime('%Y-%m-%d')
         
-        st.dataframe(display_df, use_container_width=True, hide_index=True)
+        # Display holdings with delete option
+        for idx, row in holdings_df.iterrows():
+            col1, col2, col3, col4, col5, col6 = st.columns([2, 2, 2, 2, 1, 1])
+            
+            with col1:
+                st.markdown(f"**{row['ticker']}**")
+            with col2:
+                st.text(row['name'])
+            with col3:
+                st.text(row['sector'])
+            with col4:
+                st.text(f"${row['market_value']:,.2f}")
+            with col5:
+                st.text(row['currency'])
+            with col6:
+                if st.button("X", key=f"delete_{row['ticker']}_{idx}", help="Delete holding"):
+                    if delete_holding(portfolio_id, row['ticker'], row['date']):
+                        st.success(f"Deleted {row['ticker']}")
+                        st.rerun()
+        
+        st.markdown("---")
         
         total_value = holdings_df['market_value'].sum()
         

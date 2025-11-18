@@ -23,6 +23,45 @@ import numpy as np
 from typing import Dict, List
 
 
+def calculate_z_score(
+    value: float,
+    all_values: List[float]
+) -> float:
+    """
+    Calculate z-score (standard deviations from mean)
+    
+    Z-score normalizes values across different distributions:
+    - z = 0: average
+    - z = 1: one standard deviation above average
+    - z = -1: one standard deviation below average
+    
+    This allows comparing stocks across sectors with different scales.
+    
+    Args:
+        value: The stock's metric value
+        all_values: All values across ALL sectors (not just one sector)
+    
+    Returns:
+        Z-score (typically between -3 and +3)
+    """
+    if pd.isna(value) or not all_values or len(all_values) < 2:
+        return 0.0
+    
+    clean_values = [v for v in all_values if not pd.isna(v)]
+    
+    if not clean_values or len(clean_values) < 2:
+        return 0.0
+    
+    mean = np.mean(clean_values)
+    std = np.std(clean_values)
+    
+    if std == 0:
+        return 0.0
+    
+    z = (value - mean) / std
+    return round(z, 3)
+
+
 def calculate_percentile_rank(
     ticker_value: float,
     sector_values: List[float],
@@ -95,11 +134,15 @@ def score_stock_from_info(
         
         # Get sector distributions for percentile calculations
         sector_dist = {}
+        all_sectors_dist = {}
         
         if sector_benchmarks:
             distributions = sector_benchmarks.get('distributions', {})
             sector_data = distributions.get(sector, {})
             sector_dist = sector_data.get('metrics', {})
+            
+            # Get cross-sector distributions (all stocks across all sectors)
+            all_sectors_dist = sector_benchmarks.get('all_sectors', {})
         
         # === FUNDAMENTAL METRICS ===
         
@@ -162,6 +205,33 @@ def score_stock_from_info(
             ),
             'current_ratio_pct': calculate_percentile_rank(
                 current_ratio, sector_dist.get('current_ratio', [])
+            ),
+            
+            # === CROSS-SECTOR Z-SCORES (for normalized comparison across all sectors) ===
+            # Z-score = (value - mean) / std_dev across ALL S&P 500 stocks
+            # Allows comparing stocks across sectors with different scales
+            # Higher z-score = further above average (better for most metrics)
+            
+            'roe_zscore': calculate_z_score(roe, all_sectors_dist.get('roe', [])),
+            'profit_margin_zscore': calculate_z_score(
+                profit_margin, all_sectors_dist.get('profit_margin', [])
+            ),
+            'roic_zscore': calculate_z_score(roic, all_sectors_dist.get('roic', [])),
+            'revenue_growth_zscore': calculate_z_score(
+                revenue_growth, all_sectors_dist.get('revenue_growth', [])
+            ),
+            'earnings_growth_zscore': calculate_z_score(
+                earnings_growth, all_sectors_dist.get('earnings_growth', [])
+            ),
+            # For P/E and debt: negate z-score since lower is better
+            'pe_zscore': -1 * calculate_z_score(pe, all_sectors_dist.get('pe', [])),
+            'pb_zscore': -1 * calculate_z_score(pb, all_sectors_dist.get('pb', [])),
+            'fcf_yield_zscore': calculate_z_score(fcf_yield, all_sectors_dist.get('fcf_yield', [])),
+            'debt_equity_zscore': -1 * calculate_z_score(
+                debt_equity, all_sectors_dist.get('debt_equity', [])
+            ),
+            'current_ratio_zscore': calculate_z_score(
+                current_ratio, all_sectors_dist.get('current_ratio', [])
             ),
             
             # Raw values (for reference)

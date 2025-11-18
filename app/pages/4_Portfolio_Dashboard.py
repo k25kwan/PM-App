@@ -22,7 +22,7 @@ import yfinance as yf
 
 st.set_page_config(page_title="Portfolio Dashboard", layout="wide")
 
-st.title("📊 Portfolio Dashboard")
+st.title("Portfolio Dashboard")
 
 # Get user_id from session
 user_id = st.session_state.get('user_id', 1)
@@ -372,7 +372,7 @@ if not performance_df.empty:
     
     # Show benchmark composition
     if benchmark_weights:
-        with st.expander("📊 Benchmark Composition & Sector Mapping"):
+        with st.expander("Benchmark Composition & Sector Mapping"):
             st.markdown("**Sector-to-Benchmark Mapping:**")
             
             # Create detailed mapping showing sectors → benchmarks
@@ -875,7 +875,7 @@ if not performance_df.empty and not benchmark_data.empty and not composition_df.
         st.plotly_chart(fig_attribution, use_container_width=True)
         
         # Detailed attribution table
-        with st.expander("📋 Detailed Attribution Breakdown"):
+        with st.expander("Detailed Attribution Breakdown"):
             display_df = attribution_df[['sector', 'weight', 'return_port', 'return_bench', 
                                          'allocation_effect', 'selection_effect', 
                                          'interaction_effect', 'total_effect']].copy()

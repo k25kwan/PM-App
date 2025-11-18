@@ -131,7 +131,7 @@ def generate_allocation_buckets(responses):
     # Adjust for objective conflicts
     if investment_objective == "Capital preservation" and risk_tolerance == "Aggressive":
         allocations["Warnings"].append(
-            "⚠️ Conflict detected: Defensive sector tilt with aggressive risk tolerance. "
+            " Conflict detected: Defensive sector tilt with aggressive risk tolerance. "
             "Adjusting to moderate allocation with defensive sector bias for balance."
         )
         base_weights = risk_profiles["Moderate"]
@@ -141,7 +141,7 @@ def generate_allocation_buckets(responses):
         
     elif investment_objective == "Aggressive growth" and risk_tolerance == "Conservative":
         allocations["Warnings"].append(
-            "⚠️ Conflict detected: Growth sector tilt with conservative risk tolerance. "
+            " Conflict detected: Growth sector tilt with conservative risk tolerance. "
             "Adjusting to moderate allocation with growth sector exposure managed cautiously."
         )
         base_weights = risk_profiles["Moderate"]
@@ -411,7 +411,7 @@ st.markdown("---")
 
 # Show Recommended Allocation Strategy - ONLY after button is clicked
 if st.session_state.get('allocation_buckets_generated'):
-    st.subheader("📊 Recommended Allocation Strategy")
+    st.subheader(" Recommended Allocation Strategy")
     
     allocations = generate_allocation_buckets(st.session_state.portfolio_ips)
     
@@ -438,7 +438,7 @@ if st.session_state.get('allocation_buckets_generated'):
     col1, col2 = st.columns(2)
     
     with col1:
-        st.markdown("#### 🎯 Core (Passive)")
+        st.markdown("####  Core (Passive)")
         st.caption("Index funds and ETFs tracking market benchmarks")
         if allocations["Core (Passive)"]:
             core_df = {
@@ -446,12 +446,12 @@ if st.session_state.get('allocation_buckets_generated'):
                 "Allocation (%)": list(allocations["Core (Passive)"].values())
             }
             st.table(core_df)
-            st.info("💡 **Implementation**: Use low-cost index ETFs (e.g., SPY, AGG, VT)")
+            st.info(" **Implementation**: Use low-cost index ETFs (e.g., SPY, AGG, VT)")
         else:
             st.info("100% active strategy - no passive core")
     
     with col2:
-        st.markdown("#### 🚀 Satellite (Active)")
+        st.markdown("####  Satellite (Active)")
         st.caption("Individual securities and active strategies")
         if allocations["Satellite (Active)"]:
             satellite_df = {
@@ -459,7 +459,7 @@ if st.session_state.get('allocation_buckets_generated'):
                 "Allocation (%)": list(allocations["Satellite (Active)"].values())
             }
             st.table(satellite_df)
-            st.info("💡 **Implementation**: Stock picking, sector rotation, tactical tilts")
+            st.info(" **Implementation**: Stock picking, sector rotation, tactical tilts")
         else:
             st.info("100% passive strategy - no active satellite")
     
@@ -477,7 +477,7 @@ if st.session_state.get('allocation_buckets_generated'):
         
         # Show sector tilt explanations
         if allocations.get("Sector Tilts"):
-            st.markdown("#### 📈 Sector Tilt Rationale")
+            st.markdown("####  Sector Tilt Rationale")
             for sector, weight, explanation in allocations["Sector Tilts"]:
                 st.markdown(f"**{sector}** ({weight}%): {explanation}")
     
@@ -494,7 +494,7 @@ if st.session_state.get('allocation_buckets_generated'):
     
     st.markdown("---")
     
-    st.success("✅ Your allocation strategy is ready!")
+    st.success(" Your allocation strategy is ready!")
     st.markdown("**Next Steps:**")
     st.markdown("- **Add Portfolio**: Create a portfolio and add holdings based on these allocations")
     st.markdown("- **Security Screening**: Filter securities that match your sector preferences")

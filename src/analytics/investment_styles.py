@@ -182,14 +182,18 @@ def rank_stocks_by_style_cached(
             # Include key percentiles for review
             'roe_pct': factor_scores.get('roe_pct'),
             'revenue_growth_pct': factor_scores.get('revenue_growth_pct'),
+            'earnings_growth_pct': factor_scores.get('earnings_growth_pct'),
             'pe_pct': factor_scores.get('pe_pct'),
             'profit_margin_pct': factor_scores.get('profit_margin_pct'),
             'debt_equity_pct': factor_scores.get('debt_equity_pct'),
             
-            # Raw values
+            # Raw values (convert to percentages where appropriate)
             'raw_roe': factor_scores.get('raw_roe'),
             'raw_revenue_growth': factor_scores.get('raw_revenue_growth'),
+            'raw_earnings_growth': factor_scores.get('raw_earnings_growth'),
+            'raw_profit_margin': factor_scores.get('raw_profit_margin'),
             'raw_pe': factor_scores.get('raw_pe'),
+            'raw_debt_equity': factor_scores.get('raw_debt_equity'),
         })
     
     # Sort by style score
@@ -199,6 +203,129 @@ def rank_stocks_by_style_cached(
         return pd.DataFrame()
     
     df_sorted = df.sort_values('style_score', ascending=False)
+    
+    return df_sorted.head(top_n)
+
+
+def rank_stocks_by_style_normalized(
+    factor_scores_dict: Dict[str, Dict],
+    style: str = 'balanced',
+    sector: str = None,
+    top_n: int = 10,
+    use_z_scores: bool = True
+) -> pd.DataFrame:
+    """
+    Rank stocks using NORMALIZED scores for cross-sector comparison
+    
+    This version uses z-scores instead of percentiles, allowing fair comparison
+    across sectors with different fundamental scales.
+    
+    Example: Tech stock with 60th %ile growth (30% actual) vs 
+             Utility stock with 60th %ile growth (2% actual)
+    - Old method: Both get score of 60 (misleading!)
+    - New method: Tech gets z=2.5, Utility gets z=0.3 (accurate!)
+    
+    Args:
+        factor_scores_dict: Dict mapping ticker -> factor_scores
+        style: 'growth', 'value', 'quality', or 'balanced'
+        sector: Optional - filter to single sector
+        top_n: Number of stocks to return
+        use_z_scores: If True, use z-scores; if False, fall back to percentiles
+    
+    Returns:
+        DataFrame with top N stocks sorted by normalized style score
+    """
+    
+    # Validate style
+    if style not in INVESTMENT_STYLES:
+        raise ValueError(f"Invalid style '{style}'. Choose from: {list(INVESTMENT_STYLES.keys())}")
+    
+    # Get style configuration
+    style_config = INVESTMENT_STYLES[style]
+    weights = style_config['weights']
+    min_thresholds = style_config['min_thresholds']
+    
+    # Convert weight keys to z-score keys
+    zscore_weights = {}
+    for metric, weight in weights.items():
+        # Convert e.g. 'revenue_growth_pct' to 'revenue_growth_zscore'
+        zscore_metric = metric.replace('_pct', '_zscore')
+        zscore_weights[zscore_metric] = weight
+    
+    results = []
+    
+    for ticker, factor_scores in factor_scores_dict.items():
+        if not factor_scores:
+            continue
+        
+        # Filter by sector if specified
+        if sector and factor_scores.get('sector') != sector:
+            continue
+        
+        # Apply minimum thresholds (still using percentiles for thresholds)
+        passes_threshold = all(
+            factor_scores.get(metric, 0) >= min_val 
+            for metric, min_val in min_thresholds.items()
+        )
+        
+        if not passes_threshold:
+            continue
+        
+        # Calculate weighted score using Z-SCORES
+        if use_z_scores:
+            # Z-scores: typically range from -3 to +3
+            # Convert to 0-100 scale: (z * 10) + 50
+            # z = 0 (average) → score = 50
+            # z = 2 (2 std above) → score = 70
+            # z = -2 (2 std below) → score = 30
+            style_score = sum(
+                ((factor_scores.get(zscore_metric, 0) * 10) + 50) * weight 
+                for zscore_metric, weight in zscore_weights.items()
+            )
+        else:
+            # Fallback to percentiles (old method)
+            style_score = sum(
+                factor_scores.get(metric, 50) * weight 
+                for metric, weight in weights.items()
+            )
+        
+        # Store result
+        results.append({
+            'ticker': ticker,
+            'sector': factor_scores.get('sector'),
+            'market_cap': factor_scores.get('market_cap'),
+            'style_score_normalized': round(style_score, 2),
+            
+            # Include z-scores for review
+            'roe_zscore': factor_scores.get('roe_zscore'),
+            'revenue_growth_zscore': factor_scores.get('revenue_growth_zscore'),
+            'earnings_growth_zscore': factor_scores.get('earnings_growth_zscore'),
+            'profit_margin_zscore': factor_scores.get('profit_margin_zscore'),
+            'pe_zscore': factor_scores.get('pe_zscore'),
+            'debt_equity_zscore': factor_scores.get('debt_equity_zscore'),
+            
+            # Keep percentiles for comparison
+            'roe_pct': factor_scores.get('roe_pct'),
+            'revenue_growth_pct': factor_scores.get('revenue_growth_pct'),
+            'earnings_growth_pct': factor_scores.get('earnings_growth_pct'),
+            'pe_pct': factor_scores.get('pe_pct'),
+            
+            # Raw values
+            'raw_roe': factor_scores.get('raw_roe'),
+            'raw_revenue_growth': factor_scores.get('raw_revenue_growth'),
+            'raw_earnings_growth': factor_scores.get('raw_earnings_growth'),
+            'raw_profit_margin': factor_scores.get('raw_profit_margin'),
+            'raw_pe': factor_scores.get('raw_pe'),
+            'raw_debt_equity': factor_scores.get('raw_debt_equity'),
+        })
+    
+    # Sort by normalized style score
+    df = pd.DataFrame(results)
+    
+    if df.empty:
+        return pd.DataFrame()
+    
+    df_sorted = df.sort_values('style_score_normalized', ascending=False)
     
     return df_sorted.head(top_n)
 
