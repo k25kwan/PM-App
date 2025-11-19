@@ -18,7 +18,7 @@ Usage:
 
 import pandas as pd
 from typing import List, Dict
-from src.analytics.factor_scoring import score_stock_all_factors
+from factor_scoring import score_stock_all_factors
 
 
 # Investment Style Configurations (FUNDAMENTALS ONLY)

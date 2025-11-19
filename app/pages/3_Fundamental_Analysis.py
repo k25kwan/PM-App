@@ -13,14 +13,15 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 
-# Add project root to path
+# Add project root and investment framework to path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
+sys.path.insert(0, str(project_root / "src" / "investment framework" / "fundamental analysis"))
 
 from src.core.utils_db import get_conn
-from src.analytics.sector_benchmarks import SectorBenchmarks
-from src.analytics.factor_scoring import score_stock_all_factors, score_stock_from_info
-from src.analytics.investment_styles import get_top_stocks_by_style, rank_stocks_by_style_cached, rank_stocks_by_style_normalized, INVESTMENT_STYLES
+from sector_benchmarks import SectorBenchmarks
+from factor_scoring import score_stock_all_factors, score_stock_from_info
+from investment_styles import get_top_stocks_by_style, rank_stocks_by_style_cached, rank_stocks_by_style_normalized, INVESTMENT_STYLES
 
 st.set_page_config(page_title="Fundamental Analysis", layout="wide")
 

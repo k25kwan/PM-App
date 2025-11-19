@@ -1,41 +1,55 @@
-# PM-App: Daily Portfolio Management System
+# PM-App: Portfolio Management & Investment Research System
 
-A Python-based portfolio management system for tracking daily portfolio performance, risk metrics, and attribution analysis.
+A Python-based multi-user portfolio management system combining traditional portfolio analytics with AI-powered investment research capabilities.
 
 ## Overview
 
-PM-App is a **forward-filling** portfolio management system designed for single-user portfolio tracking and analysis. Unlike traditional systems that require historical data loading, PM-App builds your portfolio history incrementally - starting from today and growing forward each day.
+PM-App integrates institutional-grade portfolio management with modern AI-driven investment screening:
 
-### Core Philosophy: Forward-Filling Architecture
+### Portfolio Management (Traditional)
+- **Forward-filling** architecture: starts from today, builds history incrementally
+- **Risk Analytics**: Volatility, VaR, Sharpe ratio, tracking error, beta
+- **Attribution Analysis**: Brinson-Fachler performance attribution
+- **SQL Server Backend**: Structured relational database with full audit trail
 
-The system is built around a simple principle: **you start with your current portfolio positions, and the system automatically builds history going forward**. Each day adds one new data point to your metrics - no complex backfilling, no historical data imports.
-
-### What PM-App Does
-
-1. **Daily Price Tracking**: Automatically fetches latest prices from Yahoo Finance for your holdings
-2. **Risk Analytics**: Calculates comprehensive rolling risk metrics (volatility, tracking error, beta, VaR, Sharpe ratio)
-3. **Attribution Analysis**: Decomposes portfolio returns vs benchmark into allocation and selection effects using Brinson-Fachler methodology
-4. **SQL Server Backend**: Structured relational database that preserves full history and supports complex queries
-
-### Who This Is For
-
-- Individual investors managing their own portfolios
-- Portfolio managers tracking client accounts
-- Finance students learning quantitative portfolio analysis
-- Anyone who wants institutional-grade analytics for personal investing
+### Investment Framework (AI-Enhanced)
+- **Fundamental Analysis**: Factor-based screening with sector benchmarking  
+- **AI News Sentiment**: Dual-AI system for sentiment validation and narrative generation
+- **Investment Styles**: Growth, value, quality, balanced screening
+- **Red Flag Detection**: Automated disaster stock elimination
 
 ## Features
 
-- **Automated Price Updates**: Fetches daily prices from Yahoo Finance with intelligent ticker mapping (e.g., bond proxies via ETFs)
+### Portfolio Management
+- **Automated Price Updates**: Daily price fetching from Yahoo Finance with intelligent ticker mapping
 - **Comprehensive Risk Metrics**: 
   - Market Risk: VaR (95%, 99%), Expected Shortfall, Volatility, Max Drawdown, Sharpe Ratio
   - Relative Risk: Beta, Tracking Error, Information Ratio, Active Return
   - Concentration Risk: HHI (Herfindahl-Hirschman Index)
   - Duration Risk: DV01 (Dollar Value of a Basis Point)
-- **Expanding Window Analysis**: All metrics calculated using entire history from earliest to latest data point (not fixed rolling windows)
-- **Sector-Level Attribution**: Brinson-Fachler attribution by sector for equity and fixed income separately
-- **Database-Driven**: All calculations flow through SQL Server views ensuring data consistency
-- **PowerShell Automation**: One-command daily updates that handle the entire workflow
+- **Expanding Window Analysis**: All metrics calculated using entire history from inception
+- **Sector-Level Attribution**: Brinson-Fachler attribution by sector for equity and fixed income
+- **Multi-User Support**: Separate portfolios and IPS policies per user
+
+### Investment Research (AI-Powered)
+- **Dual-AI Sentiment Analysis**: 
+  - First AI analyzes 100+ headlines per ticker
+  - Validator AI reviews analysis for logical consistency
+  - Final score based on validated assessment (more conservative)
+  - Market narrative generation with catalyst detection
+- **Factor-Based Screening**:
+  - 10+ fundamental factors (ROE, P/E, Debt/Equity, Revenue Growth, etc.)
+  - Sector-relative percentile rankings (S&P 1500 benchmarks)
+  - Multiple investment styles (Growth, Value, Quality, Balanced)
+- **Red Flag Detection**: 5 hard stops to filter out disaster stocks
+- **IPS Questionnaire**: Guided portfolio construction based on risk tolerance
+
+### Technology Stack
+- **Frontend**: Streamlit multi-page application
+- **Backend**: SQL Server Express (free edition)
+- **Data Source**: Yahoo Finance via `yfinance`
+- **AI**: OpenAI GPT-4o-mini for sentiment analysis
+- **Key Libraries**: pandas, numpy, pyodbc, streamlit
 
 ## Quick Start
 
@@ -43,7 +57,7 @@ The system is built around a simple principle: **you start with your current por
 
 - Python 3.10+
 - SQL Server Express (or any SQL Server instance)
-- Git
+- OpenAI API key (for AI sentiment analysis - optional)
 
 ### Installation
 
@@ -59,44 +73,39 @@ The system is built around a simple principle: **you start with your current por
    ```
 
 3. **Configure environment variables**
-   - Copy `.env.example` to `.env`
-   - Update database connection details:
+   - Create `.env` file in project root:
      ```
-     DB_SERVER=your_server_name
+     DB_SERVER=localhost\SQLEXPRESS
      DB_NAME=RiskDemo
      DB_DRIVER=ODBC Driver 17 for SQL Server
+     AUTH_MODE=windows
+     OPENAI_API_KEY=your_key_here  # Optional - for AI sentiment
      ```
 
 4. **Initialize database**
    ```powershell
    # Run schemas in order
-   sqlcmd -S your_server -d RiskDemo -i sql\schemas\01_core_portfolio.sql
-   sqlcmd -S your_server -d RiskDemo -i sql\schemas\02_risk_metrics.sql
-   sqlcmd -S your_server -d RiskDemo -i sql\schemas\03_attribution.sql
+   sqlcmd -S localhost\SQLEXPRESS -d RiskDemo -i sql\schemas\01_core_portfolio.sql
+   sqlcmd -S localhost\SQLEXPRESS -d RiskDemo -i sql\schemas\02_risk_metrics.sql
+   sqlcmd -S localhost\SQLEXPRESS -d RiskDemo -i sql\schemas\03_attribution.sql
    
-   # Load seed data (date dimensions only)
-   sqlcmd -S your_server -d RiskDemo -i sql\seed_data\seed_dimensions.sql
-   
-   # Create views
-   sqlcmd -S your_server -d RiskDemo -i sql\views\view_returns.sql
-   sqlcmd -S your_server -d RiskDemo -i sql\views\view_risk_metrics_latest.sql
+   # Load seed data
+   sqlcmd -S localhost\SQLEXPRESS -d RiskDemo -i sql\seed_data\seed_dimensions.sql
    ```
 
-5. **Input initial portfolio holdings**
-   - Manually insert holdings into `historical_portfolio_info` table
-   - Specify `date`, `ticker`, `market_value`, `sector`, `name`, etc.
-   - Example:
-     ```sql
-     INSERT INTO historical_portfolio_info (date, ticker, sector, name, market_value, currency)
-     VALUES 
-         ('2024-01-01', 'AAPL', 'Tech', 'Apple Inc.', 15000.00, 'USD'),
-         ('2024-01-01', 'MSFT', 'Tech', 'Microsoft Corp.', 12000.00, 'USD'),
-         ('2024-01-01', 'TD', 'Financials', 'Toronto-Dominion Bank', 8000.00, 'CAD');
-     ```
+5. **Launch application**
+   ```powershell
+   streamlit run app/Home.py
+   ```
+   Navigate to http://localhost:8501
 
-**Important**: The system is designed to **start from today and build forward**. You don't need historical data - just input your current positions and let the system accumulate history naturally as you run daily updates.
+### Application Workflow
 
-### Daily Workflow
+1. **IPS Questionnaire** - Answer 4 questions to generate portfolio allocation buckets
+2. **Add Portfolio** - Create portfolios and input holdings
+3. **Fundamental Analysis** - Screen S&P 1500 stocks using factor-based analysis
+4. **News Sentiment** - Analyze ticker sentiment using AI (requires OpenAI API key)
+5. **Portfolio Dashboard** - View risk metrics and attribution results
 
 The system follows a three-stage pipeline that runs daily:
 
@@ -146,31 +155,51 @@ You can also run individual stages:
 
 ```
 PM-app/
+├── app/                         # Streamlit web application
+│   ├── Home.py                  # Landing page
+│   └── pages/
+│       ├── 1_IPS_Questionnaire.py      # Investment policy questionnaire
+│       ├── 2_Add_Portfolio.py          # Portfolio management
+│       ├── 3_Fundamental_Analysis.py   # Factor-based stock screening
+│       ├── 4_News_Sentiment.py         # AI-powered news analysis
+│       └── 5_Portfolio_Dashboard.py    # Risk metrics & attribution
 ├── src/
 │   ├── core/                    # Core utilities
 │   │   ├── utils_db.py          # Database connection
-│   │   └── data_sanitizers.py   # Data cleaning functions
+│   │   ├── data_sanitizers.py   # Data cleaning functions
+│   │   └── benchmark_utils.py   # Benchmark mapping logic
 │   ├── ingestion/               # Data ingestion
-│   │   └── fetch_prices.py      # Fetch Yahoo Finance prices
-│   └── analytics/               # Analytics calculations
-│       ├── compute_risk_metrics.py    # Risk metrics
-│       └── compute_attribution.py     # Attribution analysis
+│   │   ├── fetch_prices.py      # Yahoo Finance price fetching
+│   │   └── fetch_universe.py    # S&P 500/1500 ticker lists
+│   ├── analytics/               # Portfolio analytics
+│   │   ├── compute_risk_metrics.py    # Risk calculations
+│   │   └── compute_attribution.py     # Performance attribution
+│   └── investment framework/    # Investment research modules
+│       ├── fundamental analysis/
+│       │   ├── sector_benchmarks.py   # S&P 1500 sector distributions
+│       │   ├── factor_scoring.py      # Fundamental factor calculations
+│       │   └── investment_styles.py   # Style-based stock ranking
+│       └── news sentiment/
+│           ├── sentiment_calculation.py  # Main sentiment orchestrator
+│           ├── ai_sentiment_framework.py # AI prompt engineering
+│           ├── sentiment_scorer.py       # Headline analysis
+│           └── sentiment_keywords.py     # Keyword lists
 ├── sql/
-│   ├── schemas/                 # Database schemas (MUST apply in order)
-│   │   ├── 01_core_portfolio.sql      # Portfolio holdings, prices, benchmarks
-│   │   ├── 02_risk_metrics.sql        # Risk metrics tables
-│   │   └── 03_attribution.sql         # Attribution tables and views
+│   ├── schemas/                 # Database schemas
+│   │   ├── 01_core_portfolio.sql      # Holdings, prices, users
+│   │   ├── 02_risk_metrics.sql        # Risk metrics storage
+│   │   └── 03_attribution.sql         # Attribution analysis
 │   ├── seed_data/               # Reference data
-│   │   └── seed_dimensions.sql        # Date and security dimensions
 │   └── views/                   # SQL views for reporting
-│       ├── view_returns.sql           # Portfolio/benchmark returns (CRITICAL)
-│       └── view_risk_metrics_latest.sql  # Latest risk metrics summary
 ├── scripts/
-│   └── run_daily_update.ps1     # Daily update automation
-├── data/                        # Price cache (JSON files)
+│   ├── run_daily_update.ps1     # Daily portfolio update automation
+│   ├── create_sample_portfolio.py      # Sample data generator
+│   └── backfill_portfolio_prices.py    # Historical price backfill
 ├── docs/                        # Documentation
+│   ├── CLEAN_CODEBASE.md        # Detailed architecture docs
+│   └── 30_MINUTE_INVESTMENT_FRAMEWORK.md  # Investment methodology
 ├── requirements.txt             # Python dependencies
-└── .env.example                 # Environment variable template
+└── .env                         # Environment configuration (not in git)
 ```
 
 ## Database Schema
@@ -261,53 +290,62 @@ Example metrics stored:
 
 ## Key Concepts
 
-### Forward-Filling vs. Backfilling
+### Forward-Filling Philosophy
 
-**Traditional Systems** (Backfilling):
-- Import years of historical data upfront
-- Complex data alignment and cleaning
-- Requires complete historical holdings records
-- Prone to survivorship bias
+PM-App builds portfolio history **incrementally from today forward**, rather than requiring historical data imports:
 
-**PM-App** (Forward-Filling):
-- Start with today's portfolio
-- Each day adds one new data point
-- History builds naturally over time
+**Advantages**:
 - No historical data migration needed
-- Clean, incremental growth
+- Start tracking immediately with current holdings
+- Clean, fresh data captured daily
+- No survivorship bias
 
-**Example Timeline**:
-```
-Day 1:  Input current holdings → Run update → 1 day of data
-Day 2:  Run update → 2 days of data → Minimal metrics calculated
-Day 30: Run update → 30 days of data → More robust metrics
-Day 90: Run update → 90 days of data → Increasingly stable metrics
-Day 180+: Run update → Extensive history → Highly reliable metrics
-```
+**Timeline**:
+- Day 1: Input current holdings → 1 day of data
+- Day 30: 30 days of data → Basic metrics available
+- Day 90+: Increasingly stable metrics and reliable statistics
 
-### Expanding Window Approach
+### Dual-AI Sentiment Validation
 
-Unlike traditional rolling windows (e.g., "last 30 days", "last 90 days"), PM-App uses an **expanding window from inception**:
+The AI sentiment system uses a two-stage validation approach for conservative, reliable scores:
 
-**How it works:**
-- Day 1: Calculate metrics using 1 day of data
-- Day 30: Calculate metrics using all 30 days of data
-- Day 100: Calculate metrics using all 100 days of data
-- Day 365: Calculate metrics using all 365 days of data
+**Stage 1: Analysis AI**
+- Analyzes 100+ headlines from yfinance
+- Filters for relevance to specific ticker
+- Generates initial sentiment score (0-100)
+- Creates market narrative summary
 
-**Why expanding windows?**
-- **More data = better estimates**: As history accumulates, metrics become more statistically reliable
-- **Consistent baseline**: Always comparing against your entire track record, not arbitrary time slices
-- **True performance**: Captures your full investment experience, not just recent periods
-- **Simpler logic**: No arbitrary decisions about "is 30 days enough?" or "should we use 60 vs 90?"
+**Stage 2: Validator AI**  
+- Reviews first AI's analysis with fresh perspective
+- Checks logical consistency and reasoning quality
+- Generates alternative score if concerns found
+- Final score = Validator's score (more conservative)
 
-**Trade-off**: Recent market changes are weighted equally with older data. For risk management focused on current conditions, you may want to supplement with manual short-term analysis.
+**Why Two AIs?**
+- Catches overconfidence or underconfidence
+- Validates reasoning quality
+- More reliable than single AI assessment
+- Second AI has temperature=0.5 for independent thinking
 
-**Practical implications:**
-- Volatility stabilizes over time (less noisy with more data)
-- Sharpe ratio becomes more meaningful after 6-12 months
-- Max drawdown captures worst period across entire history
-- Beta/tracking error reflect long-term relationship with benchmark
+**Output**: Market narrative + validated sentiment score (50 = neutral, 100 = very bullish, 0 = very bearish)
+
+### Factor-Based Screening
+
+Stocks ranked using percentile-based factor scores relative to sector peers:
+
+**10 Fundamental Factors**:
+- Profitability: ROE, Profit Margin, ROIC
+- Growth: Revenue Growth, Earnings Growth  
+- Value: P/E, P/B, FCF Yield
+- Safety: Debt/Equity, Current Ratio
+
+**Sector-Relative Rankings**: Each stock scored 0-100 percentile within its sector (using S&P 1500 distributions)
+
+**Investment Styles**: Different factor weight combinations
+- Growth: High weight on revenue/earnings growth
+- Value: High weight on P/E, P/B, FCF yield
+- Quality: High weight on ROE, margins, low debt
+- Balanced: Equal weights across all factors
 
 ### Attribution Methodology
 

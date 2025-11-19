@@ -17,17 +17,19 @@ import time
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
+sys.path.insert(0, str(project_root / "src" / "investment framework" / "news sentiment"))
+sys.path.insert(0, str(project_root / "src" / "investment framework" / "fundamental analysis"))
 
-from src.analytics.news_sentiment import (
+from sentiment_calculation import (
     analyze_ticker_sentiment,
     batch_analyze_tickers,
     fetch_news_for_ticker
 )
-from src.analytics.sector_benchmarks import SectorBenchmarks
+from sector_benchmarks import SectorBenchmarks
 
 st.set_page_config(page_title="News Sentiment", layout="wide")
 
-st.title("📰 News Sentiment Analysis")
+st.title("News Sentiment Analysis")
 st.markdown("Analyze market sentiment from recent news headlines to identify catalysts and trends")
 
 # Check for OpenAI API key
@@ -37,7 +39,7 @@ load_dotenv()
 has_openai_key = bool(os.environ.get("OPENAI_API_KEY"))
 
 if not has_openai_key:
-    st.warning("⚠️ OpenAI API key not found. Using keyword-based sentiment analysis. "
+    st.warning("OpenAI API key not found. Using keyword-based sentiment analysis. "
                "For AI-powered analysis, add OPENAI_API_KEY to your .env file.")
 
 # Sidebar configuration
@@ -50,6 +52,24 @@ use_ai = st.sidebar.checkbox(
     disabled=not has_openai_key,
     help="AI analysis provides more nuanced sentiment and catalyst detection"
 )
+
+# News timeframe
+news_days = st.sidebar.selectbox(
+    "News Timeframe",
+    options=[3, 7, 14, 30],
+    index=1,  # Default to 7 days
+    help="How many days back to analyze news (longer = more context, less noise)"
+)
+
+st.sidebar.markdown(f"**Analyzing news from last {news_days} days**")
+if news_days == 3:
+    st.sidebar.info("Short-term: Recent catalysts and immediate events")
+elif news_days == 7:
+    st.sidebar.info("Weekly: Good balance of trend and recency")
+elif news_days == 14:
+    st.sidebar.info("Bi-weekly: Clearer trends, less daily noise")
+else:
+    st.sidebar.info("Monthly: Long-term narrative and major developments")
 
 # Initialize benchmarks for ticker universe
 if 'benchmarks' not in st.session_state or 'sp500_tickers' not in st.session_state:
@@ -81,11 +101,11 @@ with tab1:
         ).upper()
     
     with col2:
-        analyze_btn = st.button("🔍 Analyze", type="primary", use_container_width=True)
+        analyze_btn = st.button("Analyze", type="primary", width="stretch")
     
     if analyze_btn and ticker_input:
         with st.spinner(f"Analyzing sentiment for {ticker_input}..."):
-            sentiment = analyze_ticker_sentiment(ticker_input, use_ai=use_ai)
+            sentiment = analyze_ticker_sentiment(ticker_input, use_ai=use_ai, days_back=news_days)
             
             if sentiment['total_articles'] == 0:
                 st.warning(f"No recent news found for {ticker_input}")
@@ -115,16 +135,11 @@ with tab1:
                 with col2:
                     st.metric("Confidence", sentiment['confidence'])
                 with col3:
-                    st.metric("Articles Analyzed", sentiment['total_articles'])
+                    # Show magnitude if available from new framework
+                    magnitude = sentiment.get('magnitude', 'N/A')
+                    st.metric("Magnitude", magnitude)
                 with col4:
-                    # Signal strength
-                    if sentiment['confidence'] == 'High' and (score > 65 or score < 35):
-                        signal = "🟢 Strong"
-                    elif sentiment['confidence'] in ['High', 'Medium']:
-                        signal = "🟡 Moderate"
-                    else:
-                        signal = "🔴 Weak"
-                    st.metric("Signal Strength", signal)
+                    st.metric("Articles Analyzed", sentiment['total_articles'])
                 
                 # Sentiment gauge chart
                 fig = go.Figure(go.Indicator(
@@ -152,38 +167,106 @@ with tab1:
                 fig.update_layout(height=300)
                 st.plotly_chart(fig, use_container_width=True)
                 
-                # Display narrative and catalysts if AI analysis
+                # AI Analysis Section
                 if sentiment.get('ai_analysis'):
-                    st.subheader("📋 AI Analysis")
+                    st.subheader("AI Analysis")
                     
+                    # Market Narrative
                     if sentiment.get('narrative'):
                         st.info(f"**Market Narrative:** {sentiment['narrative']}")
-                    
-                    if sentiment.get('catalysts'):
-                        st.markdown("**Key Catalysts:**")
-                        for catalyst in sentiment['catalysts']:
-                            st.markdown(f"• {catalyst}")
-                else:
-                    # Show basic stats for keyword analysis
-                    st.subheader("📊 Sentiment Breakdown")
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("Positive Articles", sentiment.get('positive_count', 0))
-                    with col2:
-                        st.metric("Neutral Articles", sentiment.get('neutral_count', 0))
-                    with col3:
-                        st.metric("Negative Articles", sentiment.get('negative_count', 0))
                 
-                # Display recent headlines
-                st.subheader("📰 Recent Headlines")
+                # Display recent headlines with detailed scoring
+                # Get headline details from either direct field or keyword_analysis
+                headline_details = sentiment.get('headline_details', [])
+                if not headline_details and sentiment.get('keyword_analysis'):
+                    headline_details = sentiment['keyword_analysis'].get('headline_details', [])
+                
+                # Filter to only show relevant headlines (exclude filtered/irrelevant ones)
+                relevant_details = [d for d in headline_details if d.get('classification') != 'Filtered']
+                
+                st.subheader(f"Relevant Headlines ({len(relevant_details)} of {sentiment.get('total_articles', 0)} total)")
                 articles = sentiment.get('articles', [])
-                if articles:
-                    for i, article in enumerate(articles[:10], 1):
-                        with st.expander(f"{i}. {article['title']}"):
-                            st.markdown(f"**Publisher:** {article['publisher']}")
-                            st.markdown(f"**Published:** {article['publish_time'].strftime('%Y-%m-%d %H:%M')}")
-                            if article.get('link'):
-                                st.markdown(f"[Read Article]({article['link']})")
+                
+                # Create a mapping of headlines to their details
+                details_map = {}
+                for detail in relevant_details:
+                    details_map[detail['headline']] = detail
+                
+                if articles and relevant_details:
+                    display_count = 0
+                    for article in articles:
+                        title = article['title']
+                        detail = details_map.get(title)
+                        
+                        # Skip if not in relevant details
+                        if not detail:
+                            continue
+                        
+                        display_count += 1
+                        score = detail.get('normalized_score', 50)
+                        classification = detail.get('classification', 'Neutral')
+                        relevance = detail.get('relevance_weight', 1.0)
+                        ticker_mentioned = detail.get('ticker_mentioned', False)
+                        ai_scored = detail.get('ai_scored', False)
+                        
+                        # Color code the expander title based on sentiment
+                        score_indicator = "[BULL]" if score >= 60 else "[BEAR]" if score <= 40 else "[NEUT]"
+                        
+                        ai_indicator = "[AI]" if ai_scored else "[KW]"
+                        
+                        with st.expander(f"{display_count}. {score_indicator} {ai_indicator} [{score:.0f}] {title}"):
+                            col1, col2 = st.columns([1, 2])
+                            
+                            with col1:
+                                st.markdown(f"**Score:** {score:.1f}/100")
+                                st.markdown(f"**Classification:** {classification}")
+                                st.markdown(f"**Scoring Method:** {'AI (GPT-4o-mini)' if ai_scored else 'Keywords'}")
+                                st.markdown(f"**Relevance:** ✓ Directly relevant to {ticker_input}")
+                                
+                                st.markdown(f"**Publisher:** {article['publisher']}")
+                                st.markdown(f"**Published:** {article['publish_time'].strftime('%Y-%m-%d %H:%M')}")
+                                if article.get('link'):
+                                    st.markdown(f"[Read Article]({article['link']})")
+                            
+                            with col2:
+                                if detail:
+                                    st.markdown("**Scoring Breakdown:**")
+                                    
+                                    # Positive matches
+                                    if detail.get('positive_matches'):
+                                        st.markdown("*Positive Keywords:*")
+                                        for match in detail['positive_matches']:
+                                            negated = " (NEGATED)" if match.get('negated') else ""
+                                            modifier_info = f" × {match['modifier']:.1f}" if match.get('modifier', 1.0) != 1.0 else ""
+                                            st.markdown(f"- **{match['keyword']}**: {match['base_weight']:.1f}{modifier_info} = {match['final_weight']:.1f}{negated}")
+                                    
+                                    # Negative matches
+                                    if detail.get('negative_matches'):
+                                        st.markdown("*Negative Keywords:*")
+                                        for match in detail['negative_matches']:
+                                            negated = " (NEGATED)" if match.get('negated') else ""
+                                            modifier_info = f" × {match['modifier']:.1f}" if match.get('modifier', 1.0) != 1.0 else ""
+                                            st.markdown(f"- **{match['keyword']}**: {match['base_weight']:.1f}{modifier_info} = {match['final_weight']:.1f}{negated}")
+                                    
+                                    # Ambiguous keywords
+                                    if detail.get('ambiguous_keywords'):
+                                        st.markdown("*Ambiguous Keywords (AI analysis recommended):*")
+                                        for kw in detail['ambiguous_keywords']:
+                                            st.markdown(f"- **{kw['keyword']}**: {kw['reason']}")
+                                    
+                                    # Modifiers
+                                    if detail.get('intensifiers') or detail.get('diminishers') or detail.get('negations'):
+                                        st.markdown("*Modifiers Found:*")
+                                        if detail.get('intensifiers'):
+                                            st.markdown(f"- Intensifiers: {', '.join(detail['intensifiers'])}")
+                                        if detail.get('diminishers'):
+                                            st.markdown(f"- Diminishers: {', '.join(detail['diminishers'])}")
+                                        if detail.get('negations'):
+                                            st.markdown(f"- Negations: {', '.join(detail['negations'])}")
+                                    
+                                    st.markdown(f"**Raw Score:** {detail.get('raw_score', 0):.2f} → Normalized: {score:.1f}/100")
+                                else:
+                                    st.markdown("*No scoring details available for this headline*")
 
 # Tab 2: Batch Analysis
 with tab2:
@@ -207,7 +290,7 @@ with tab2:
     with col2:
         st.markdown("") # Spacing
         st.markdown("") # Spacing
-        batch_analyze_btn = st.button("🔍 Analyze All", type="primary", use_container_width=True)
+        batch_analyze_btn = st.button("Analyze All", type="primary", use_container_width=True)
     
     if batch_analyze_btn:
         # Parse tickers
@@ -225,13 +308,13 @@ with tab2:
             results = []
             for i, ticker in enumerate(tickers):
                 status_text.text(f"Analyzing {ticker} ({i+1}/{len(tickers)})...")
-                sentiment = analyze_ticker_sentiment(ticker, use_ai=use_ai)
+                sentiment = analyze_ticker_sentiment(ticker, use_ai=use_ai, days_back=news_days)
                 results.append({
                     'Ticker': ticker,
                     'Sentiment Score': sentiment['sentiment_score'],
-                    'Signal': '🟢 Bullish' if sentiment['sentiment_score'] >= 65 else 
-                             '🟡 Neutral' if sentiment['sentiment_score'] >= 45 else 
-                             '🔴 Bearish',
+                    'Signal': 'Bullish' if sentiment['sentiment_score'] >= 65 else 
+                             'Neutral' if sentiment['sentiment_score'] >= 45 else 
+                             'Bearish',
                     'Confidence': sentiment['confidence'],
                     'Articles': sentiment['total_articles'],
                     'Narrative': sentiment.get('narrative', 'N/A')[:100] + '...' if sentiment.get('narrative') else 'N/A'
@@ -262,40 +345,36 @@ with tab2:
                 st.metric("Average Sentiment", f"{avg_score:.1f}")
             
             # Results table
-            st.subheader("📊 Sentiment Scores")
+            st.subheader("Sentiment Scores")
             
-            # Color code the sentiment scores
+            # Color code the sentiment scores with red-white-green gradient
             def color_sentiment(val):
                 if isinstance(val, (int, float)):
-                    if val >= 70:
-                        return 'background-color: darkgreen; color: white'
+                    # Green gradient for bullish (65-100)
+                    if val >= 80:
+                        return 'background-color: #006400; color: white'  # Dark green
+                    elif val >= 70:
+                        return 'background-color: #228B22; color: white'  # Forest green
+                    elif val >= 60:
+                        return 'background-color: #32CD32; color: black'  # Lime green
                     elif val >= 55:
-                        return 'background-color: lightgreen'
+                        return 'background-color: #90EE90; color: black'  # Light green
+                    # White/neutral for middle range (45-55)
                     elif val >= 45:
-                        return 'background-color: lightgray'
+                        return 'background-color: #FFFFFF; color: black'  # White
+                    # Red gradient for bearish (0-45)
+                    elif val >= 40:
+                        return 'background-color: #FFB6C1; color: black'  # Light red
                     elif val >= 30:
-                        return 'background-color: orange'
+                        return 'background-color: #FF6B6B; color: black'  # Medium red
+                    elif val >= 20:
+                        return 'background-color: #DC143C; color: white'  # Crimson
                     else:
-                        return 'background-color: red; color: white'
+                        return 'background-color: #8B0000; color: white'  # Dark red
                 return ''
             
-            styled_df = df_results.style.applymap(color_sentiment, subset=['Sentiment Score'])
-            st.dataframe(styled_df, use_container_width=True, height=400)
-            
-            # Sentiment distribution chart
-            st.subheader("📈 Sentiment Distribution")
-            fig = px.bar(
-                df_results.sort_values('Sentiment Score', ascending=False),
-                x='Ticker',
-                y='Sentiment Score',
-                color='Sentiment Score',
-                color_continuous_scale=['red', 'yellow', 'green'],
-                title="Sentiment Scores by Ticker"
-            )
-            fig.update_layout(showlegend=False)
-            fig.add_hline(y=50, line_dash="dash", line_color="gray", 
-                         annotation_text="Neutral (50)")
-            st.plotly_chart(fig, use_container_width=True)
+            styled_df = df_results.style.map(color_sentiment, subset=['Sentiment Score'])
+            st.dataframe(styled_df, width="stretch", height=400)
 
 # Tab 3: Market Overview
 with tab3:
@@ -313,5 +392,3 @@ with tab3:
 
 # Footer
 st.markdown("---")
-st.caption("💡 **Tip:** Sentiment analysis works best when combined with fundamental analysis. "
-          "Use this as one input in your investment decision process.")

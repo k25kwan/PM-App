@@ -19,80 +19,52 @@
 
 ## Development Roadmap
 
-### Current State (✅ Implemented)
-- **Phase 0: Foundation (Nov 2025)**
-  - ✅ Red flag detection (5 hard stops: unprofitable+debt, negative equity, penny stocks, extreme volatility, zombies)
-  - ✅ Multi-style factor scoring (Growth, Value, Quality, Momentum styles with percentile rankings)
-  - ✅ S&P 500/1500 universe fetching (Wikipedia-based, 503 stocks)
-  - ✅ Sector-relative benchmarking (dynamic benchmarks, auto-refresh)
-  - ✅ Security screening UI (Streamlit with style selection, sector filtering)
-  - ✅ Basic news sentiment (keyword-based, 0-100 score)
-  - ✅ Competitive moat heuristics (margin-based proxy)
+### ✅ Phase 0: Foundation (Completed Nov 2025)
+- ✅ Red flag detection (5 hard stops: unprofitable+debt, negative equity, penny stocks, extreme volatility, zombies)
+- ✅ Multi-style factor scoring (Growth, Value, Quality, Balanced styles with percentile rankings)
+- ✅ S&P 500/1500 universe fetching (Wikipedia-based, ~500 stocks)
+- ✅ Sector-relative benchmarking (dynamic benchmarks from S&P 1500, cached for 7 days)
+- ✅ Security screening UI (Streamlit with style selection, sector filtering, red flag visualization)
+- ✅ Competitive moat heuristics (margin-based proxy)
 
-### Next: Phase 1 - Enhanced News Sentiment (Dec 2025 - Jan 2026)
+### ✅ Phase 1: AI News Sentiment (Completed Nov 2025)
 
-**Goal**: Upgrade from keyword matching to AI-powered sentiment analysis with catalyst detection
+**Goal**: AI-powered sentiment analysis with dual-AI validation system
 
-**Why This Phase:**
-- ✅ Leverage existing AI extraction framework from ai-risk-demo repository
-- ✅ Placeholder already exists (`calculate_news_sentiment()`) - upgrade in place
-- ✅ High ROI: Catches catalysts before market reacts (M&A, FDA approvals, earnings surprises)
-- ✅ Natural fit: Framework already weights `news_sentiment_pct` at 10-20% in style scoring
+**Implemented Features:**
 
-**Implementation (2-3 weeks):**
+1. **Dual-AI Validation Architecture**
+   - Analysis AI: Filters 100+ headlines, scores relevance, generates initial sentiment
+   - Validator AI: Reviews first AI with independent perspective, generates alternative score
+   - Final score = Validator's score (more conservative, catches overconfidence)
 
-```python
-# Enhanced news sentiment module
-src/analytics/news_sentiment.py
+2. **Market Narrative Generation**
+   - AI synthesizes dominant narrative from relevant headlines
+   - Catalyst detection (M&A, earnings, product launches, legal issues)
+   - Confidence assessment based on article volume and consistency
 
-def analyze_news_sentiment_ai(ticker):
-    """
-    AI-powered news sentiment analysis
-    
-    Features:
-    1. Pull headlines from multiple sources (Yahoo Finance, news APIs)
-    2. AI extraction: Use LLM to extract:
-       - Sentiment score (0-100)
-       - Key facts/numbers mentioned
-       - Event type (earnings, M&A, lawsuit, product launch, etc.)
-    3. Cross-reference: If no numbers, check multiple articles for validation
-    4. Historical matching: Compare to similar events from past
-    
-    Returns:
-        {
-            'sentiment_score': 0-100,
-            'confidence': 'High' | 'Medium' | 'Low',
-            'key_events': ['FDA approval pending', 'CEO change announced'],
-            'catalyst_flags': ['earnings_beat', 'merger_rumor', 'product_launch'],
-            'articles_analyzed': 10,
-            'dominant_narrative': "Positive momentum from AI product launch"
-        }
-    """
-    # Reuse logic from ai-risk-demo:
-    # - fetch_headlines_by_keyword()
-    # - extract_scenario_values_ai()
-    # - cross_reference_articles()
-    # - find_similar_historical_events()
-```
+3. **Integration Points**
+   - Dedicated News Sentiment page in Streamlit app
+   - Batch analysis capability for portfolio/watchlist screening
+   - Clean UI showing only market narrative (removed debug clutter)
 
-**Integration Points:**
-- Replace `calculate_news_sentiment()` in `factor_scoring.py`
-- Add catalyst flags to investment thesis generation
-- Surface in Security Screening results table
-- Store sentiment history in database for trend analysis
+**Technical Implementation:**
+- `src/investment framework/news sentiment/sentiment_calculation.py` - Main orchestrator
+- `src/investment framework/news sentiment/ai_sentiment_framework.py` - Prompt engineering
+- `src/investment framework/news sentiment/sentiment_scorer.py` - Headline analysis
+- `src/investment framework/news sentiment/sentiment_keywords.py` - Keyword library
+- `app/pages/4_News_Sentiment.py` - UI interface
 
-**Expected Outcomes:**
-- 📈 Catch positive catalysts 1-3 days before market reaction
-- 🚨 Avoid disasters (lawsuit announcements, investigation news)
-- 📊 Validate fundamental signals with market narrative
-- 🎯 Improve style scoring accuracy (better signal-to-noise)
+**Key Design Decision**: Use validator AI score as final score (not average of two AIs)
+- Rationale: Second AI has broader context and can catch logical flaws
+- Temperature settings: First AI = 0.3 (focused), Validator AI = 0.5 (independent)
+- Result: More conservative, reliable scores
 
-**Deliverables:**
-- [ ] `src/analytics/news_sentiment.py` (AI-powered sentiment analysis)
-- [ ] Integration with `factor_scoring.py` (replace keyword-based function)
-- [ ] Add to Security Screening UI (show catalyst flags)
-- [ ] Database schema update (store sentiment history)
-- [ ] Test with 100 stocks, validate accuracy vs manual review
+**Expected Outcomes (Validated):**
+- ✅ Narrative generation working well - captures market storyline
+- ✅ Dual validation catches overconfident assessments
+- ✅ Clean UI improves user experience
+- ⏳ Long-term validation: Track predictive accuracy vs forward returns
 
 ---
 
