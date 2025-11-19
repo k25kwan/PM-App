@@ -1,5 +1,61 @@
 # 30-Minute Investment Decision Framework
 
+## 🎯 Next Steps: Development Priorities (Nov 2025)
+
+Based on current interests and feasibility analysis:
+
+### Recommended Implementation Order
+
+**1. High-Yield Indicators (Phase 2) - START HERE**
+- **Why First**: Builds on existing yfinance infrastructure, no new data costs
+- **Timeline**: 4-6 weeks (free tier only)
+- **Quick Wins**: 
+  - Week 1-2: Dividend sustainability (all data from yfinance)
+  - Week 3-4: Enhanced moat assessment (historical data analysis)
+  - Week 5-6: Basic earnings calendar (yfinance + Alpha Vantage free)
+- **Decision Point**: After validation, evaluate if $35/month for insider data worth it
+
+**2. Technical Analysis (Phase 3) - HIGH INTEREST**
+- **Why Second**: Complements fundamentals, easy to implement with yfinance price data
+- **Timeline**: 3-4 weeks
+- **Benefits**: 
+  - Improves entry timing (avoid buying at tops)
+  - Filters out broken technicals
+  - All data free from yfinance
+- **Integration**: Add as overlay to Fundamental Analysis page
+
+**3. Backtesting Engine (Phase 4) - VALIDATION CRITICAL**
+- **Why Third**: Need High-Yield + Technicals first to test complete strategy
+- **Timeline**: 9 weeks total
+- **Key Value**: 
+  - Prove strategy works before risking real capital
+  - Optimize weight combinations (fundamentals 40% vs 50%?)
+  - Identify failure modes
+- **Critical**: Mitigate AI bias (use fundamentals-only for historical period)
+
+**4. Composite Ranking System - CONTINUOUS**
+- Start with Fundamentals (40%) + Sentiment (60%)
+- Add High-Yield signals when Phase 2 complete → Reweight to 40/30/30
+- Add Technicals when Phase 3 complete → Final weights 40/20/20/20
+- Validate weights via backtesting in Phase 4
+
+### Data Source Strategy
+
+**Immediate (Free Tier)**:
+- Dividend sustainability → yfinance ✅
+- Enhanced moat → yfinance historical data ✅
+- Basic earnings timing → yfinance + Alpha Vantage free tier ✅
+- Technical indicators → yfinance price data ✅
+- **Cost**: $0/month
+
+**Optional Upgrade (After ROI Validation)**:
+- Insider trading → Quiver Quantitative API ($20/month)
+- Analyst upgrades/estimates → Financial Modeling Prep ($15/month)
+- **Cost**: $35/month ($420/year)
+- **ROI Target**: 2-3% alpha on $100k+ portfolio = 4.7x-7.1x return
+
+---
+
 ## Quick Reference: Key Design Decisions
 
 **Philosophy**: Simplicity over complexity. One good method beats 10 mediocre options.
@@ -68,7 +124,180 @@
 
 ---
 
-### Future: Phase 2 - High-Yield Indicators (Q1 2026)
+### Phase 2: High-Yield Indicators (Q1 2026) - NEXT PRIORITY
+
+**Goal**: Add signals that historically predict outperformance (dividend sustainability, insider buying, catalyst timing)
+
+**Key Challenge**: 🔴 **Data Source Friction**
+- Most high-quality data requires paid subscriptions
+- Free alternatives have quality/coverage issues
+- Need to balance cost vs signal quality
+
+**Priority Ranking by Data Availability:**
+
+**✅ Priority 1: Dividend Sustainability (Easiest - 2 weeks)**
+
+**Data Source**: ✅ **yfinance (FREE)** - Already using, no new dependencies
+- Dividend yield, payout ratio, dividend growth rate all available
+- Historical dividend payments
+- Free cash flow and earnings (for payout ratio calculation)
+
+```python
+# Dividend quality scoring
+src/investment framework/high yield/dividend_sustainability.py
+
+def analyze_dividend_quality(ticker):
+    """
+    Assess dividend sustainability and growth potential
+    
+    Data: All from yfinance.info
+    - dividendYield
+    - payoutRatio
+    - trailingEps
+    - dividendRate
+    - 5-year historical dividends
+    - freeCashFlow
+    
+    Scoring:
+    - Yield: 2-6% ideal (too low = no income, too high = risky)
+    - Payout Ratio: <60% sustainable, >80% danger zone
+    - Growth: 5yr dividend CAGR >5% = quality compounder
+    - Coverage: FCF/Dividends >1.5x = safe
+    
+    Returns:
+        {
+            'dividend_yield': 3.2,
+            'payout_ratio': 45,  # % of earnings paid as dividend
+            'dividend_growth_5yr': 8.5,  # 5-year CAGR
+            'fcf_coverage': 2.1,  # FCF / annual dividends
+            'years_of_growth': 8,  # consecutive years of div increases
+            'sustainability_score': 0-100,
+            'sustainability_grade': 'A+',  # A+ to F
+            'risk_flags': []  # ['High payout ratio', 'Declining FCF']
+        }
+    """
+```
+
+**Implementation Effort**: ⭐⭐ (2 weeks)
+- All data already accessible
+- Straightforward calculations
+- High signal quality
+
+---
+
+**🟡 Priority 2: Insider Trading Signals (Medium - 3 weeks)**
+
+**Data Source Options:**
+
+1. **SEC EDGAR API (FREE but hard to use)**
+   - ✅ Free, official source
+   - ❌ Complex XML parsing
+   - ❌ Rate limits (10 requests/second)
+   - ❌ Requires significant data wrangling
+   - **Verdict**: Possible but time-consuming
+
+2. **OpenInsider.com Web Scraping (FREE)**
+   - ✅ Free
+   - ✅ Clean HTML tables (easier than EDGAR)
+   - ❌ Against ToS (gray area)
+   - ❌ Fragile if site structure changes
+   - **Verdict**: Quick solution but risky long-term
+
+3. **Quiver Quantitative API (PAID - $20/month)**
+   - ✅ Clean API, well-documented
+   - ✅ Pre-calculated insider clusters
+   - ✅ Reliable, maintained
+   - ❌ $240/year cost
+   - **Verdict**: Best for production use
+
+4. **Financial Modeling Prep (PAID - $15/month)**
+   - ✅ Covers insider transactions + many other endpoints
+   - ✅ Good documentation
+   - ❌ Less specialized than Quiver
+   - **Verdict**: Good if you need other data too
+
+**Recommendation**: 
+- Start with **OpenInsider web scraping** (proof of concept, free)
+- If valuable, upgrade to **Quiver Quantitative** ($20/month for reliability)
+
+---
+
+**🔴 Priority 3: Earnings Catalyst Timing (Hardest - 4 weeks)**
+
+**Data Source Options:**
+
+1. **yfinance Earnings Calendar (FREE but limited)**
+   ```python
+   import yfinance as yf
+   ticker = yf.Ticker("AAPL")
+   earnings_dates = ticker.get_earnings_dates()  # Next earnings date
+   ```
+   - ✅ Free, already using
+   - ❌ Only gives date, no analyst estimates or surprises
+   - ❌ No upgrade/downgrade data
+   - **Verdict**: Good for timing, not comprehensive
+
+2. **Alpha Vantage (FREE tier available)**
+   - ✅ Free tier: 5 API calls/minute
+   - ✅ Earnings calendar endpoint
+   - ❌ No analyst upgrades/downgrades in free tier
+   - **Verdict**: Supplement to yfinance
+
+3. **Earnings Whispers API (PAID - $50/month)**
+   - ✅ Detailed earnings estimates
+   - ✅ Whisper numbers (consensus beyond official)
+   - ❌ Expensive
+   - **Verdict**: Overkill for this use case
+
+4. **Financial Modeling Prep (PAID - $15/month)**
+   - ✅ Earnings calendar
+   - ✅ Analyst upgrades/downgrades
+   - ✅ Price targets
+   - ✅ Reasonable price
+   - **Verdict**: Best value for multiple data needs
+
+**Recommendation**:
+- Start with **yfinance + Alpha Vantage (free)** for basic catalyst timing
+- Upgrade to **Financial Modeling Prep** ($15/month) if you want analyst consensus
+
+---
+
+**💡 Priority 4: Enhanced Moat Assessment (Medium - 2 weeks)**
+
+**Data Source**: ✅ **yfinance (FREE)** - Can calculate from existing data
+- Historical margins (5-year average)
+- ROE consistency
+- Revenue growth vs sector ETF
+- No new data sources needed!
+
+**Implementation**: All calculable from yfinance historical financials
+
+---
+
+### Data Source Strategy Recommendation
+
+**Phase 2a: Free Tier (No new costs)**
+- ✅ Dividend sustainability (yfinance)
+- ✅ Enhanced moat (yfinance historical data)
+- ✅ Basic earnings timing (yfinance + Alpha Vantage free)
+- **Total Cost**: $0/month
+- **Timeline**: 4-6 weeks
+
+**Phase 2b: Paid Upgrade (Optional, after validation)**
+- 🟡 Add insider trading via Quiver ($20/month)
+- 🟡 Add analyst data via Financial Modeling Prep ($15/month)
+- **Total Cost**: $35/month = $420/year
+- **Timeline**: +2-3 weeks
+
+**Value Proposition**:
+- If high-yield indicators add 2-3% annual alpha
+- On a $100k portfolio = $2,000-$3,000/year
+- Data costs = $420/year
+- **ROI**: 4.7x - 7.1x
+
+---
+
+**Priority 1: Dividend Sustainability (Easiest - 2 weeks)**
 
 **Goal**: Add proven alpha generators beyond basic fundamentals
 
@@ -177,7 +406,302 @@ def assess_competitive_moat_enhanced(ticker):
 
 ---
 
-### Future: Phase 3 - Technical Analysis (Optional, Q2 2026)
+### Phase 3: Technical Analysis Integration (Q2 2026)
+
+**Goal**: Add entry/exit timing signals to complement fundamental analysis
+
+**Status**: HIGH INTEREST - Provides tactical timing for fundamental picks
+
+**Philosophy**: Use technicals as **timing filters, NOT selection criteria**
+- Fundamentals + Sentiment = WHAT to buy
+- Technicals = WHEN to buy it
+
+**Minimal Viable Technical Module:**
+```python
+# Simple, proven indicators only (no overfitting)
+src/investment framework/technical analysis/technical_signals.py
+
+def calculate_technical_signals(ticker):
+    """
+    Proven technical indicators for timing
+    
+    Focus on 4 reliable signals:
+    1. RSI (14-period): Overbought (>70) / Oversold (<30)
+    2. MACD Crossover: Trend change detection
+    3. Volume Surge: >2x average = unusual activity
+    4. 50/200 Day MA: Trend direction (golden cross/death cross)
+    
+    Returns:
+        {
+            'rsi_14': 45.3,
+            'rsi_signal': 'Neutral',  # Oversold | Neutral | Overbought
+            'macd_signal': 'Bullish',  # Bullish Crossover | Neutral | Bearish
+            'volume_surge': False,     # True if 2x avg volume
+            'ma_trend': 'Bullish',     # Price > 50MA > 200MA
+            'support_level': 145.20,   # Recent low
+            'resistance_level': 182.50, # Recent high
+            'technical_grade': 'B+',    # A+ (all bullish) to F (all bearish)
+            'entry_timing': 'Good' | 'Wait' | 'Avoid'
+        }
+    """
+```
+
+**Data Source**: All available from yfinance (free historical price data)
+- ✅ No additional subscriptions needed
+- ✅ Easy to implement with pandas/numpy
+- ✅ Can backtest against historical data
+
+**Integration Strategy:**
+- Add to Fundamental Analysis page as optional overlay
+- Flag stocks: "Strong fundamentals (85/100) but overbought (RSI=78) → Wait for pullback"
+- Entry signals: "Quality stock (80/100) + oversold (RSI=28) → Strong entry point"
+- Avoid falling knives: "Good value metrics but broken support → Monitor, don't buy yet"
+
+**Expected Outcomes:**
+- ⏱️ Improve entry/exit timing by 10-15%
+- 🚫 Avoid buying at short-term tops
+- 📊 Better risk/reward on individual positions
+- 🎯 Complement AI sentiment with price action validation
+
+---
+
+### Phase 4: Backtesting Engine (Q2-Q3 2026) - CRITICAL FOR VALIDATION
+
+**Goal**: Validate strategy performance using historical simulations
+
+**Status**: VERY INTERESTED - Essential for proving strategy works before real capital deployment
+
+**Key Challenges Identified:**
+
+1. **AI Bias Problem** 🔴
+   - Current AI (GPT-4) trained on data through Oct 2023
+   - If backtesting 2020-2023, AI "already knows" what happened
+   - Risk: Overfitted results that won't work going forward
+   - **Solution**: Use AI only for structural analysis, not predictions within training period
+
+2. **Holding Period Strategy** 🟡
+   - How long to hold positions? (30 days? 90 days? Until score drops?)
+   - Rebalancing frequency (weekly? monthly? quarterly?)
+   - Exit criteria (stop loss? score threshold? time-based?)
+   - **Solution**: Test multiple strategies, document assumptions
+
+3. **Execution Assumptions** 🟡
+   - Slippage and trading costs
+   - Position sizing (equal weight? score-weighted?)
+   - Portfolio construction (top 10? top 20? diversification rules?)
+   - **Solution**: Conservative assumptions (0.1% slippage, 10bps commission)
+
+4. **Data Integrity** 🟡
+   - Survivorship bias (only testing stocks that still exist)
+   - Look-ahead bias (using future data accidentally)
+   - Point-in-time data (company fundamentals as known at that date)
+   - **Solution**: Use yfinance historical data with proper time-shifting
+
+**Proposed Architecture:**
+
+```python
+# Backtesting Framework
+src/backtesting/backtest_engine.py
+
+class StrategyBacktest:
+    """
+    Historical simulation of investment strategy
+    
+    Key Features:
+    - Time-travel simulation (reconstruct universe at each date)
+    - Multiple holding strategies (buy-and-hold, rebalance, dynamic)
+    - Transaction cost modeling
+    - Risk-adjusted performance metrics
+    - Drawdown analysis
+    """
+    
+    def __init__(self, start_date, end_date, initial_capital=100000):
+        self.start_date = start_date
+        self.end_date = end_date
+        self.capital = initial_capital
+        
+    def run_simulation(self, strategy_config):
+        """
+        strategy_config = {
+            'selection_method': 'growth_style',  # which screening method
+            'top_n': 10,                         # how many stocks
+            'rebalance_frequency': 'monthly',    # when to rebalance
+            'holding_period': 90,                # days to hold (if fixed)
+            'exit_rule': 'score_drop',           # or 'time', 'stop_loss'
+            'exit_threshold': 60,                # sell if score drops below 60
+            'position_sizing': 'equal_weight',   # or 'score_weighted'
+            'max_position': 0.15,                # 15% max per stock
+        }
+        """
+        results = {
+            'total_return': 0.0,
+            'annualized_return': 0.0,
+            'sharpe_ratio': 0.0,
+            'max_drawdown': 0.0,
+            'win_rate': 0.0,
+            'avg_holding_period': 0,
+            'turnover': 0.0,
+            'total_trades': 0,
+            'transaction_costs': 0.0,
+            'monthly_returns': [],
+            'equity_curve': pd.DataFrame(),
+            'trade_log': pd.DataFrame()
+        }
+        return results
+```
+
+**AI Bias Mitigation Strategy:**
+
+1. **Historical Fundamental Scoring** (NO AI)
+   - Use ONLY factor scores calculable from historical data
+   - No AI sentiment for backtest period (AI wasn't available then)
+   - Pure quantitative: ROE, P/E, revenue growth, margins, etc.
+
+2. **Out-of-Sample Testing**
+   - Train strategy on 2015-2020
+   - Test on 2021-2023 (true out-of-sample)
+   - Validate on 2024-present (live performance)
+
+3. **AI Sentiment Forward Testing** (Future Only)
+   - For AI sentiment, only use it going forward from implementation date
+   - Compare: Strategy without AI (2020-2024) vs Strategy with AI (2024+)
+   - This shows incremental value of AI layer
+
+**Backtesting Page Features:**
+
+```
+Streamlit Page: 6_Strategy_Backtest.py
+
+Sections:
+1. Strategy Configuration
+   - Select style (Growth, Value, Quality, Balanced)
+   - Set holding period and rebalancing rules
+   - Configure position sizing
+   
+2. Historical Simulation
+   - Date range selector
+   - Run backtest button
+   - Progress bar (monthly rebalances)
+   
+3. Performance Metrics
+   - Total return vs S&P 500
+   - Sharpe ratio, max drawdown
+   - Win rate, avg gain/loss
+   
+4. Equity Curve Chart
+   - Strategy vs benchmark over time
+   - Drawdown periods highlighted
+   
+5. Trade Analysis
+   - Top winners and losers
+   - Holding period distribution
+   - Sector exposure over time
+   
+6. Monthly Attribution
+   - Which months outperformed/underperformed
+   - Correlation with market conditions
+```
+
+**Implementation Phases:**
+
+**Phase 4a: Basic Backtest Engine (4 weeks)**
+- Build core simulation framework
+- Equal-weight, monthly rebalance only
+- Simple buy-and-hold for holding period
+- Basic performance metrics
+
+**Phase 4b: Advanced Features (2 weeks)**
+- Multiple holding strategies
+- Dynamic exits (score-based, stop-loss)
+- Transaction cost modeling
+- Risk-adjusted metrics
+
+**Phase 4c: Streamlit UI (1 week)**
+- Interactive configuration
+- Charts and visualizations
+- Export results to Excel
+
+**Phase 4d: Validation & Tuning (2 weeks)**
+- Run multiple strategy variations
+- Document what works and what doesn't
+- Sensitivity analysis on parameters
+
+**Critical Success Metrics:**
+- ✅ Sharpe ratio > 1.0 (vs S&P 500 ~0.6)
+- ✅ Max drawdown < 25%
+- ✅ Win rate > 55%
+- ✅ Outperform S&P 500 by 3%+ annually
+
+**Expected Timeline**: 9 weeks total for full backtesting system
+
+---
+
+### Composite Ranking System (Integrated Across Phases)
+
+**Goal**: Single unified score combining all signals for final stock selection
+
+**Current State**: 
+- Fundamentals: Factor percentiles (0-100)
+- News Sentiment: AI-validated score (0-100)
+- High Yield: Not yet implemented
+- Technicals: Not yet implemented
+
+**Future State (After All Phases):**
+
+```python
+def calculate_composite_score(ticker):
+    """
+    Unified ranking combining all signals
+    
+    Components with weights:
+    1. Fundamental Quality (40%):
+       - Factor scores from investment style
+       - Red flag check (eliminates if triggered)
+       
+    2. News Sentiment (20%):
+       - AI-validated sentiment score
+       - Catalyst detection bonus
+       
+    3. High-Yield Signals (20%):
+       - Dividend sustainability
+       - Insider buying activity
+       - Upcoming catalysts
+       
+    4. Technical Timing (20%):
+       - RSI, MACD signals
+       - Volume confirmation
+       - Trend alignment
+    
+    Returns:
+        {
+            'composite_score': 0-100,
+            'component_scores': {
+                'fundamental': 85,
+                'sentiment': 70,
+                'high_yield': 65,
+                'technical': 75
+            },
+            'confidence': 'High',  # based on signal agreement
+            'rank': 5,  # out of universe
+            'recommendation': 'Strong Buy' | 'Buy' | 'Hold' | 'Sell'
+        }
+    """
+```
+
+**Signal Agreement Analysis:**
+- If all 4 agree (all >70): "High Confidence Strong Buy"
+- If 3/4 agree: "Buy" 
+- If fundamentals strong but technicals weak: "Watch - Wait for better entry"
+- If 2 diverge strongly: "Conflicting signals - Investigate further"
+
+**Backtesting Integration:**
+- Test different weight combinations (40/20/20/20 vs 50/25/15/10, etc.)
+- Validate which combination produces best risk-adjusted returns
+- Document optimal weighting strategy
+
+---
+
+### Future: Phase 5 - Technical Analysis (Optional, Q2 2026)
 
 **Goal**: Add entry/exit timing signals (only if needed for frequent trading)
 
