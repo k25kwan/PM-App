@@ -175,9 +175,42 @@ with tab1:
                     if sentiment.get('narrative'):
                         st.info(f"**Market Narrative:** {sentiment['narrative']}")
                 
+                # AI Validation Details Section
+                if sentiment.get('validation'):
+                    with st.expander("🤖 AI Dual Validation Details", expanded=False):
+                        val = sentiment['validation']
+                        
+                        st.markdown("**Two-Stage AI Validation Process**")
+                        
+                        # Show original vs validated scores
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            original_score = sentiment.get('original_ai_score') or val.get('original_score', 'N/A')
+                            st.metric("Original AI Score", f"{original_score}/100", help="First AI's initial sentiment assessment")
+                        with col2:
+                            validated_score = val.get('alternative_score') or original_score
+                            delta = None
+                            if val.get('alternative_score') and original_score != 'N/A':
+                                delta = round(validated_score - original_score, 1)
+                            st.metric("Validated Score", f"{validated_score}/100", delta=delta, help="Validator AI's reviewed score")
+                        with col3:
+                            validation_status = "✅ Validated" if val.get('validated') else "⚠️ Adjusted"
+                            st.metric("Status", validation_status)
+                        
+                        # Validator reasoning
+                        if val.get('reasoning'):
+                            st.markdown("**Validator AI Reasoning:**")
+                            st.info(val['reasoning'])
+                        
+                        # Issues identified
+                        if val.get('issues') and len(val['issues']) > 0:
+                            st.markdown("**Issues Identified:**")
+                            for issue in val['issues']:
+                                st.markdown(f"- {issue}")
+                
                 # Phase 1b: VADER/spaCy Comparison Section
                 if sentiment.get('vader_comparison'):
-                    with st.expander("🔬 Method Comparison (AI vs VADER vs Keywords)", expanded=False):
+                    with st.expander("🔬 Method Comparison (AI vs VADER)", expanded=False):
                         comp = sentiment['vader_comparison']
                         
                         st.markdown("**Multi-Method Sentiment Validation**")
@@ -186,9 +219,9 @@ with tab1:
                         # Score comparison table
                         scores_df = pd.DataFrame([
                             {
-                                'Method': 'AI (Dual Validation)',
+                                'Method': 'AI (Validated)',
                                 'Score': comp['scores'].get('ai', 'N/A'),
-                                'Type': 'Primary - Nuanced analysis',
+                                'Type': 'Dual-AI validation',
                                 'Speed': '~10-20s'
                             },
                             {

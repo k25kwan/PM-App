@@ -19,15 +19,6 @@ import pandas as pd
 from sentiment_scorer import analyze_headlines_batch, calibrate_with_ai
 from ai_sentiment_framework import build_ai_prompt
 
-# Phase 1b: Import sentiment comparison module
-try:
-    from sentiment_comparison import SentimentComparator
-    VADER_SPACY_AVAILABLE = True
-except ImportError:
-    VADER_SPACY_AVAILABLE = False
-    print("[INFO] VADER/spaCy not available. Install with: pip install vaderSentiment spacy")
-    print("[INFO] Then run: python -m spacy download en_core_web_sm")
-
 
 def validate_narrative_with_ai(ticker: str, narrative: str, overall_score: float, 
                                 relevant_headlines: list, client) -> dict:
@@ -337,11 +328,15 @@ SUMMARY: Mixed sentiment with strong product performance offset by investor conf
             client=client
         )
         
+        # Add original score to validation result for UI display
+        validation_result['original_score'] = overall_score
+        
         # Use validator score if available, otherwise use original score
         final_score = validation_result.get('alternative_score') or overall_score
         
         result = {
             'overall_score': round(final_score, 1),  # Use validator's score
+            'original_ai_score': round(overall_score, 1),  # Preserve original for UI
             'confidence': confidence,
             'relevant_headlines': relevant_headlines,
             'headline_details': headline_details,
@@ -358,6 +353,7 @@ SUMMARY: Mixed sentiment with strong product performance offset by investor conf
                 'neutral_count': sum(1 for d in headline_details if 40 < d['normalized_score'] < 60),
                 'bearish_count': sum(1 for d in headline_details if d['normalized_score'] <= 40),
                 'avg_score': round(final_score, 1),
+                'original_avg_score': round(overall_score, 1),  # Preserve original
                 'ai_scored_count': len(headline_details),
                 'keyword_scored_count': 0,
                 'high_relevance_count': len(relevant_headlines)
@@ -773,29 +769,53 @@ def analyze_ticker_sentiment(ticker, use_ai=True, days_back=7, include_vader_com
         result['headline_details'] = full_headline_details
         
         # Phase 1b: Add VADER/spaCy comparison if available
-        if include_vader_comparison and VADER_SPACY_AVAILABLE:
+        if include_vader_comparison:
             try:
-                comparator = SentimentComparator()
-                all_headlines = [a.get('title', '') for a in articles if a.get('title')]
+                # First check if the required packages are available
+                import importlib.util
+                spacy_spec = importlib.util.find_spec("spacy")
+                vader_spec = importlib.util.find_spec("vaderSentiment")
                 
-                # Get company name from yfinance
-                try:
-                    ticker_info = yf.Ticker(ticker)
-                    company_name = ticker_info.info.get('longName', ticker)
-                except:
-                    company_name = ticker
-                
-                comparison = comparator.compare_all_methods(
-                    headlines=all_headlines,
-                    ticker=ticker,
-                    ai_score=result.get('overall_score'),
-                    keyword_score=None,  # We don't have keyword-based score in this flow
-                    company_name=company_name
-                )
-                
-                result['vader_comparison'] = comparison
+                if spacy_spec is None or vader_spec is None:
+                    print(f"[INFO] Missing packages - spacy: {spacy_spec is not None}, vader: {vader_spec is not None}")
+                    result['vader_comparison'] = None
+                else:
+                    # Import here to avoid module-level import issues with sys.path in Streamlit
+                    from sentiment_comparison import SentimentComparator
+                    
+                    print(f"[DEBUG] SentimentComparator imported successfully for {ticker}")
+                    
+                    comparator = SentimentComparator()
+                    all_headlines = [a.get('title', '') for a in articles if a.get('title')]
+                    
+                    # Get company name from yfinance
+                    try:
+                        ticker_info = yf.Ticker(ticker)
+                        company_name = ticker_info.info.get('longName', ticker)
+                    except:
+                        company_name = ticker
+                    
+                    print(f"[DEBUG] Running VADER/spaCy comparison for {ticker} with {len(all_headlines)} headlines")
+                    
+                    comparison = comparator.compare_all_methods(
+                        headlines=all_headlines,
+                        ticker=ticker,
+                        ai_score=result.get('overall_score'),
+                        keyword_score=None,  # We don't have keyword-based score in this flow
+                        company_name=company_name
+                    )
+                    
+                    result['vader_comparison'] = comparison
+                    print(f"[DEBUG] VADER comparison complete: {comparison['agreement']['flag']}")
+            except ImportError as e:
+                print(f"[INFO] VADER/spaCy not available: {e}")
+                print("[INFO] Install with: pip install vaderSentiment spacy")
+                print("[INFO] Then run: python -m spacy download en_core_web_sm")
+                result['vader_comparison'] = None
             except Exception as e:
                 print(f"[WARNING] VADER/spaCy comparison failed: {e}")
+                import traceback
+                traceback.print_exc()
                 result['vader_comparison'] = None
         else:
             result['vader_comparison'] = None
