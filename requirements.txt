@@ -10,6 +10,11 @@ requests>=2.31.0
 # AI and NLP
 openai>=2.0.0
 
+# Phase 1b: Alternative sentiment analysis methods
+vaderSentiment>=3.3.2  # Rule-based sentiment for news/social media (deterministic, backtesting-friendly)
+spacy>=3.7.0  # Named entity recognition for headline filtering
+# Note: After installing spacy, run: python -m spacy download en_core_web_sm
+
 # Multi-user web app dependencies
 streamlit>=1.28.0
 fastapi>=0.104.0

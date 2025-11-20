@@ -175,6 +175,67 @@ with tab1:
                     if sentiment.get('narrative'):
                         st.info(f"**Market Narrative:** {sentiment['narrative']}")
                 
+                # Phase 1b: VADER/spaCy Comparison Section
+                if sentiment.get('vader_comparison'):
+                    with st.expander("🔬 Method Comparison (AI vs VADER vs Keywords)", expanded=False):
+                        comp = sentiment['vader_comparison']
+                        
+                        st.markdown("**Multi-Method Sentiment Validation**")
+                        st.markdown(f"{comp['agreement']['flag']}")
+                        
+                        # Score comparison table
+                        scores_df = pd.DataFrame([
+                            {
+                                'Method': 'AI (Dual Validation)',
+                                'Score': comp['scores'].get('ai', 'N/A'),
+                                'Type': 'Primary - Nuanced analysis',
+                                'Speed': '~10-20s'
+                            },
+                            {
+                                'Method': 'VADER (All Headlines)',
+                                'Score': comp['scores'].get('vader_all', 'N/A'),
+                                'Type': 'Rule-based - Fast backup',
+                                'Speed': '<1s'
+                            },
+                            {
+                                'Method': 'VADER (Filtered)',
+                                'Score': comp['scores'].get('vader_filtered', 'N/A') if comp['scores'].get('vader_filtered') else 'N/A',
+                                'Type': 'spaCy NER filtered',
+                                'Speed': '<2s'
+                            }
+                        ])
+                        
+                        st.dataframe(scores_df, use_container_width=True, hide_index=True)
+                        
+                        # Agreement analysis
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric("Avg Score", f"{comp['agreement']['avg_score']:.1f}")
+                        with col2:
+                            st.metric("Score Range", f"{comp['agreement']['score_range']:.1f}")
+                        with col3:
+                            direction_icon = "📈" if comp['agreement']['direction'] == 'bullish' else "📉" if comp['agreement']['direction'] == 'bearish' else "➡️"
+                            st.metric("Direction", f"{direction_icon} {comp['agreement']['direction'].capitalize()}")
+                        
+                        st.markdown(f"**Recommendation:** {comp['recommendation']}")
+                        
+                        # NER Filtering details
+                        if comp.get('ner_filtering'):
+                            ner = comp['ner_filtering']
+                            st.markdown(f"**Relevance Filtering (spaCy NER):**")
+                            st.markdown(f"- Relevant headlines: {len(ner['relevant_headlines'])} of {ner['total_headlines']} ({ner['relevance_rate']:.1f}%)")
+                            if ner['entities_found']:
+                                unique_orgs = [e[0] for e in ner['entities_found'] if e[1] == 'ORG'][:5]
+                                if unique_orgs:
+                                    st.markdown(f"- Organizations mentioned: {', '.join(unique_orgs)}")
+                        
+                        # VADER details
+                        if comp.get('vader_details'):
+                            vader = comp['vader_details']
+                            st.markdown(f"**VADER Details:**")
+                            st.markdown(f"- Confidence: {vader['confidence']} (std dev: {vader['std_dev']:.2f})")
+                            st.markdown(f"- Avg compound score: {vader['avg_compound']:.2f} (-1=bearish, 0=neutral, 1=bullish)")
+                
                 # Display recent headlines with detailed scoring
                 # Get headline details from either direct field or keyword_analysis
                 headline_details = sentiment.get('headline_details', [])

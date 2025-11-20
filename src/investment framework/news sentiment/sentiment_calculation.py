@@ -1,12 +1,12 @@
 """
-News Sentiment Analysis Module - AI-First Approach
+News Sentiment Analysis Module - AI-First Approach with VADER/spaCy Validation
 
-Analyzes news headlines using AI to:
-1. Filter for relevance to the specific ticker
-2. Extract sentiment from relevant headlines
-3. Provide aggregated sentiment score with confidence
+Analyzes news headlines using:
+1. Dual-AI validation (primary method)
+2. VADER rule-based sentiment (validation/backup)
+3. spaCy NER for relevance filtering (enhancement)
 
-No complex keyword logic - just AI doing what it does best.
+Phase 1b enhancement: Multi-method comparison for confidence building.
 """
 
 import os
@@ -18,6 +18,15 @@ from datetime import datetime, timedelta
 import pandas as pd
 from sentiment_scorer import analyze_headlines_batch, calibrate_with_ai
 from ai_sentiment_framework import build_ai_prompt
+
+# Phase 1b: Import sentiment comparison module
+try:
+    from sentiment_comparison import SentimentComparator
+    VADER_SPACY_AVAILABLE = True
+except ImportError:
+    VADER_SPACY_AVAILABLE = False
+    print("[INFO] VADER/spaCy not available. Install with: pip install vaderSentiment spacy")
+    print("[INFO] Then run: python -m spacy download en_core_web_sm")
 
 
 def validate_narrative_with_ai(ticker: str, narrative: str, overall_score: float, 
@@ -691,17 +700,18 @@ def fetch_news_for_ticker(ticker, max_articles=100, days_back=7):
         return []
 
 
-def analyze_ticker_sentiment(ticker, use_ai=True, days_back=7):
+def analyze_ticker_sentiment(ticker, use_ai=True, days_back=7, include_vader_comparison=True):
     """
-    Complete sentiment analysis for a ticker using AI-first approach
+    Complete sentiment analysis for a ticker using AI-first approach with optional VADER/spaCy validation
     
     Args:
         ticker: Stock ticker symbol
         use_ai: Whether to use AI-powered analysis (default True)
         days_back: How many days of news to analyze
+        include_vader_comparison: Whether to include VADER/spaCy comparison (Phase 1b)
     
     Returns:
-        Dictionary with comprehensive sentiment analysis
+        Dictionary with comprehensive sentiment analysis including multi-method comparison
     """
     # Fetch news
     articles = fetch_news_for_ticker(ticker, days_back=days_back)
@@ -728,7 +738,8 @@ def analyze_ticker_sentiment(ticker, use_ai=True, days_back=7):
                 'keyword_scored_count': 0,
                 'high_relevance_count': 0
             },
-            'headline_details': []
+            'headline_details': [],
+            'vader_comparison': None  # Phase 1b
         }
     
     # Use AI-first approach if enabled
@@ -761,12 +772,41 @@ def analyze_ticker_sentiment(ticker, use_ai=True, days_back=7):
         
         result['headline_details'] = full_headline_details
         
+        # Phase 1b: Add VADER/spaCy comparison if available
+        if include_vader_comparison and VADER_SPACY_AVAILABLE:
+            try:
+                comparator = SentimentComparator()
+                all_headlines = [a.get('title', '') for a in articles if a.get('title')]
+                
+                # Get company name from yfinance
+                try:
+                    ticker_info = yf.Ticker(ticker)
+                    company_name = ticker_info.info.get('longName', ticker)
+                except:
+                    company_name = ticker
+                
+                comparison = comparator.compare_all_methods(
+                    headlines=all_headlines,
+                    ticker=ticker,
+                    ai_score=result.get('overall_score'),
+                    keyword_score=None,  # We don't have keyword-based score in this flow
+                    company_name=company_name
+                )
+                
+                result['vader_comparison'] = comparison
+            except Exception as e:
+                print(f"[WARNING] VADER/spaCy comparison failed: {e}")
+                result['vader_comparison'] = None
+        else:
+            result['vader_comparison'] = None
+        
         return result
     else:
         # Fallback to keyword-based approach
         sentiment = extract_sentiment_ai(articles, ticker, use_openai=False)
         sentiment['ticker'] = ticker
         sentiment['articles'] = articles
+        sentiment['vader_comparison'] = None  # Not available in fallback mode
         return sentiment
 
 

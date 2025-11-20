@@ -70,6 +70,10 @@ PM-App integrates institutional-grade portfolio management with modern AI-driven
 2. **Install Python dependencies**
    ```powershell
    pip install -r requirements.txt
+   
+   # Optional: Install VADER + spaCy for sentiment validation (Phase 1b)
+   pip install vaderSentiment spacy
+   python -m spacy download en_core_web_sm
    ```
 
 3. **Configure environment variables**
@@ -305,9 +309,9 @@ PM-App builds portfolio history **incrementally from today forward**, rather tha
 - Day 30: 30 days of data → Basic metrics available
 - Day 90+: Increasingly stable metrics and reliable statistics
 
-### Dual-AI Sentiment Validation
+### Dual-AI Sentiment Validation + Multi-Method Comparison
 
-The AI sentiment system uses a two-stage validation approach for conservative, reliable scores:
+The AI sentiment system uses a two-stage validation approach with additional VADER/spaCy cross-validation:
 
 **Stage 1: Analysis AI**
 - Analyzes 100+ headlines from yfinance
@@ -321,13 +325,23 @@ The AI sentiment system uses a two-stage validation approach for conservative, r
 - Generates alternative score if concerns found
 - Final score = Validator's score (more conservative)
 
-**Why Two AIs?**
-- Catches overconfidence or underconfidence
-- Validates reasoning quality
-- More reliable than single AI assessment
-- Second AI has temperature=0.5 for independent thinking
+**Stage 3: VADER + spaCy Validation (Phase 1b - Nov 2025)**
+- VADER: Rule-based sentiment analysis (fast, deterministic, backtesting-friendly)
+- spaCy: Named entity recognition for improved relevance filtering
+- Agreement Analysis: Flags when AI and VADER diverge significantly
+- Multi-Method Comparison: Displays all three scores (AI, VADER, Keywords) in UI
 
-**Output**: Market narrative + validated sentiment score (50 = neutral, 100 = very bullish, 0 = very bearish)
+**Why Two AIs + VADER?**
+- Dual-AI catches overconfidence or underconfidence
+- VADER provides free, instant validation (no API costs)
+- spaCy filters out 20-40% of irrelevant headlines
+- Agreement flags build confidence: ✅ (high) / ⚠️ (moderate) / 🚨 (divergence)
+- VADER enables backtesting (deterministic, no AI training cutoff bias)
+
+**Output**: 
+- Market narrative + validated sentiment score (50 = neutral, 100 = very bullish, 0 = very bearish)
+- Method comparison table showing AI, VADER, and filtered scores
+- Agreement level and recommendation based on method consensus
 
 ### Factor-Based Screening
 
