@@ -1,3 +1,5 @@
+#(FLAG): doesn't seem like it is being used right now -> mapping is for the demo portfolio from ai-risk-demo
+
 import yfinance
 import pandas as pd
 import os

@@ -1,27 +1,15 @@
-"""
-Portfolio Risk Metrics Calculator
-
-Computes comprehensive risk metrics for portfolio monitoring:
-- Market Risk: VaR, ES, Volatility, Max Drawdown, Sharpe Ratio
-- Relative Risk: Beta, Tracking Error, Information Ratio, Active Return
-- Concentration: HHI (Herfindahl-Hirschman Index)
-- Duration: DV01 (Dollar Value of 01)
-
-NOTE: All metrics use the FULL history from earliest to latest data point.
-This is a "rolling window from inception" approach - as more data accumulates,
-the metrics incorporate the entire history for increasingly robust calculations.
-"""
-
 import pandas as pd
 import numpy as np
 from src.core.utils_db import get_conn
 from datetime import date, timedelta
 
-# Risk-free rate (annualized)
-RISK_FREE_RATE = 0.04  # 4% annual
+# risk-free rate (annualized)
+RISK_FREE_RATE = 0.04 
 
 def load_portfolio_returns(asof_date=None):
-    """Load portfolio-weighted daily returns from database view up to asof_date"""
+
+    # (FLAG): is v_portfolio_daily_returns the best place to pull these returns from?
+    # this view was used before in powerbi but now i am using streamlit so im not sure if i still need this view
     with get_conn() as cn:
         if asof_date:
             query = """
@@ -44,7 +32,6 @@ def load_portfolio_returns(asof_date=None):
     return df
 
 def load_benchmark_returns(asof_date=None):
-    """Load benchmark composite daily returns from database view up to asof_date"""
     with get_conn() as cn:
         if asof_date:
             query = """
@@ -66,6 +53,7 @@ def load_benchmark_returns(asof_date=None):
     df = df.sort_values('date')
     return df
 
+# (FLAG): can this be combined with load_portfolio_returns function?
 def load_portfolio_holdings(asof_date=None):
     """Load portfolio holdings for concentration metrics as of specified date"""
     with get_conn() as cn:
@@ -85,71 +73,52 @@ def load_portfolio_holdings(asof_date=None):
             df = pd.read_sql(query, cn)
     return df
 
-def load_bond_durations(asof_date=None):
-    """Load bond positions and their durations as of specified date"""
-    with get_conn() as cn:
-        if asof_date:
-            query = """
-            SELECT ticker, market_value, sector
-            FROM historical_portfolio_info
-            WHERE date = ?
-            AND sector LIKE '%Bond%'
-            """
-            df = pd.read_sql(query, cn, params=[asof_date])
-        else:
-            query = """
-            SELECT ticker, market_value, sector
-            FROM historical_portfolio_info
-            WHERE date = (SELECT MAX(date) FROM historical_portfolio_info)
-            AND sector LIKE '%Bond%'
-            """
-            df = pd.read_sql(query, cn)
-    return df
+# implement bond stuff later
+# def load_bond_durations(asof_date=None):
+#     """Load bond positions and their durations as of specified date"""
+#     with get_conn() as cn:
+#         if asof_date:
+#             query = """
+#             SELECT ticker, market_value, sector
+#             FROM historical_portfolio_info
+#             WHERE date = ?
+#             AND sector LIKE '%Bond%'
+#             """
+#             df = pd.read_sql(query, cn, params=[asof_date])
+#         else:
+#             query = """
+#             SELECT ticker, market_value, sector
+#             FROM historical_portfolio_info
+#             WHERE date = (SELECT MAX(date) FROM historical_portfolio_info)
+#             AND sector LIKE '%Bond%'
+#             """
+#             df = pd.read_sql(query, cn)
+#     return df
 
 # ============================================================================
 # MARKET RISK METRICS
 # ============================================================================
 
 def calculate_var_95(returns):
-    """
-    Calculate Value at Risk at 95% confidence level
-    Returns the 5th percentile of returns (negative value = loss)
-    Uses ALL available data (no lookback limit)
-    """
     var_95 = np.percentile(returns, 5)
     return var_95
 
 def calculate_expected_shortfall(returns):
-    """
-    Calculate Expected Shortfall (Conditional VaR)
-    Average of returns below the VaR threshold
-    Uses ALL available data (no lookback limit)
-    """
     var_95 = np.percentile(returns, 5)
     es = returns[returns <= var_95].mean()
     return es
 
 def calculate_volatility(returns):
-    """
-    Calculate annualized volatility
-    Uses ALL available data (no lookback limit)
-    """
     daily_vol = returns.std()
     annualized_vol = daily_vol * np.sqrt(252)
     return annualized_vol
 
-def calculate_sharpe_ratio(returns):
-    """
-    Calculate Sharpe Ratio
-    (Annualized Return - Risk Free Rate) / Annualized Volatility
-    Uses ALL available data (no lookback limit)
-    """
-    
-    # Annualized return
+def calculate_sharpe_ratio(returns):    
+    # annualized return
     cumulative_return = (1 + returns).prod() - 1
     annualized_return = (1 + cumulative_return) ** (252 / len(returns)) - 1
     
-    # Annualized volatility
+    # annualized volatility
     annualized_vol = returns.std() * np.sqrt(252)
     
     if annualized_vol == 0:
@@ -159,13 +128,8 @@ def calculate_sharpe_ratio(returns):
     return sharpe
 
 def calculate_max_drawdown(returns):
-    """
-    Calculate Maximum Drawdown
-    Largest peak-to-trough decline
-    Uses ALL available data (no lookback limit)
-    """
-    
-    # Calculate cumulative returns
+    # calculate cumulative returns
+    # (FLAG): step through this and make sure the calculation makes sense
     cumulative = (1 + returns).cumprod()
     running_max = cumulative.expanding().max()
     drawdown = (cumulative - running_max) / running_max
@@ -177,12 +141,7 @@ def calculate_max_drawdown(returns):
 # ============================================================================
 
 def calculate_beta(portfolio_returns, benchmark_returns):
-    """
-    Calculate Beta (sensitivity to benchmark)
-    Covariance(Portfolio, Benchmark) / Variance(Benchmark)
-    Uses ALL available data (no lookback limit)
-    """
-    # Align dates
+    # align dates
     merged = pd.merge(portfolio_returns, benchmark_returns, on='date', suffixes=('_port', '_bench'))
     
     covariance = merged['daily_return_port'].cov(merged['daily_return_bench'])
@@ -195,34 +154,21 @@ def calculate_beta(portfolio_returns, benchmark_returns):
     return beta
 
 def calculate_tracking_error(portfolio_returns, benchmark_returns):
-    """
-    Calculate Tracking Error (annualized)
-    Standard deviation of active returns (portfolio - benchmark)
-    Uses ALL available data (no lookback limit)
-    """
-    # Align dates
     merged = pd.merge(portfolio_returns, benchmark_returns, on='date', suffixes=('_port', '_bench'))
     
+    # (FLAG): does this need to be an absolute value?
     active_returns = merged['daily_return_port'] - merged['daily_return_bench']
     tracking_error = active_returns.std() * np.sqrt(252)
     return tracking_error
 
+# (FLAG): check this calculation
 def calculate_information_ratio(portfolio_returns, benchmark_returns):
-    """
-    Calculate Information Ratio
-    Active Return / Tracking Error
-    Uses ALL available data (no lookback limit)
-    """
-    # Align dates
     merged = pd.merge(portfolio_returns, benchmark_returns, on='date', suffixes=('_port', '_bench'))
     
     active_returns = merged['daily_return_port'] - merged['daily_return_bench']
-    
-    # Annualized active return
     cumulative_active = (1 + active_returns).prod() - 1
     annualized_active_return = (1 + cumulative_active) ** (252 / len(active_returns)) - 1
-    
-    # Tracking error
+
     tracking_error = active_returns.std() * np.sqrt(252)
     
     if tracking_error == 0:
@@ -232,11 +178,6 @@ def calculate_information_ratio(portfolio_returns, benchmark_returns):
     return info_ratio
 
 def calculate_active_return(portfolio_returns, benchmark_returns):
-    """
-    Calculate annualized active return (portfolio - benchmark)
-    Uses ALL available data (no lookback limit)
-    """
-    # Align dates
     merged = pd.merge(portfolio_returns, benchmark_returns, on='date', suffixes=('_port', '_bench'))
     
     active_returns = merged['daily_return_port'] - merged['daily_return_bench']
@@ -250,22 +191,15 @@ def calculate_active_return(portfolio_returns, benchmark_returns):
 # ============================================================================
 
 def calculate_hhi(holdings_df):
-    """
-    Calculate Herfindahl-Hirschman Index (HHI)
-    Sum of squared weights (0-10000, higher = more concentrated)
-    """
     total_mv = holdings_df['market_value'].sum()
     if total_mv == 0:
         return 0
     
     weights = holdings_df['market_value'] / total_mv
-    hhi = (weights ** 2).sum() * 10000  # Scale to 0-10000
+    hhi = (weights ** 2).sum() * 10000
     return hhi
 
 def calculate_sector_hhi(holdings_df):
-    """
-    Calculate HHI at sector level
-    """
     sector_mv = holdings_df.groupby('sector')['market_value'].sum()
     total_mv = sector_mv.sum()
     
@@ -280,45 +214,41 @@ def calculate_sector_hhi(holdings_df):
 # DURATION METRICS
 # ============================================================================
 
-def calculate_dv01(bond_holdings_df):
-    """
-    Calculate DV01 (Dollar Value of 01 basis point)
-    Approximation using bond duration estimates
+# def calculate_dv01(bond_holdings_df):
+#     """
+#     Calculate DV01 (Dollar Value of 01 basis point)
+#     Approximation using bond duration estimates
     
-    For simplicity, using approximate durations:
-    - US10Y (10-year treasury): ~9 years duration
-    - CORP5 (5-year corporate): ~4.5 years duration
-    - CAN10Y (10-year Canada): ~9 years duration
-    """
-    # Approximate modified durations
-    duration_map = {
-        'US10Y': 9.0,
-        'CORP5': 4.5,
-        'CAN10Y': 9.0
-    }
+#     For simplicity, using approximate durations:
+#     - US10Y (10-year treasury): ~9 years duration
+#     - CORP5 (5-year corporate): ~4.5 years duration
+#     - CAN10Y (10-year Canada): ~9 years duration
+#     """
+#     # Approximate modified durations
+#     duration_map = {
+#         'US10Y': 9.0,
+#         'CORP5': 4.5,
+#         'CAN10Y': 9.0
+#     }
     
-    total_dv01 = 0
-    for _, row in bond_holdings_df.iterrows():
-        ticker = row['ticker']
-        mv = row['market_value']
+#     total_dv01 = 0
+#     for _, row in bond_holdings_df.iterrows():
+#         ticker = row['ticker']
+#         mv = row['market_value']
         
-        if ticker in duration_map:
-            duration = duration_map[ticker]
-            # DV01 = Market Value * Modified Duration * 0.0001
-            dv01 = mv * duration * 0.0001
-            total_dv01 += dv01
+#         if ticker in duration_map:
+#             duration = duration_map[ticker]
+#             # DV01 = Market Value * Modified Duration * 0.0001
+#             dv01 = mv * duration * 0.0001
+#             total_dv01 += dv01
     
-    return total_dv01
+#     return total_dv01
 
 # ============================================================================
 # MAIN CALCULATION AND STORAGE
 # ============================================================================
 
 def calculate_and_store_all_metrics(asof_date=None):
-    """
-    Calculate all risk metrics and store in database
-    Uses ALL available data from earliest to latest (no rolling window limit)
-    """
     if asof_date is None:
         asof_date = date.today()
     
@@ -328,7 +258,7 @@ def calculate_and_store_all_metrics(asof_date=None):
     port_returns = load_portfolio_returns(asof_date)
     bench_returns = load_benchmark_returns(asof_date)
     holdings = load_portfolio_holdings(asof_date)
-    bond_holdings = load_bond_durations(asof_date)
+    # bond_holdings = load_bond_durations(asof_date)
     
     if len(port_returns) == 0:
         print(f"No portfolio returns data available as of {asof_date}")
@@ -336,11 +266,11 @@ def calculate_and_store_all_metrics(asof_date=None):
     
     print(f"Using {len(port_returns)} days of return data (from {port_returns['date'].min()} to {port_returns['date'].max()})")
     
-    # Prepare metrics list
     metrics = []
-    lookback_days = len(port_returns)  # Use all available data
+    # uses all available days right now but this can be changed
+    lookback_days = len(port_returns)
     
-    # Market Risk Metrics
+    # market risk
     returns_series = port_returns['daily_return']
     metrics.append(('VaR_95', calculate_var_95(returns_series), 'Market Risk', lookback_days))
     metrics.append(('Expected_Shortfall', calculate_expected_shortfall(returns_series), 'Market Risk', lookback_days))
@@ -348,18 +278,18 @@ def calculate_and_store_all_metrics(asof_date=None):
     metrics.append(('Sharpe_Ratio', calculate_sharpe_ratio(returns_series), 'Market Risk', lookback_days))
     metrics.append(('Max_Drawdown', calculate_max_drawdown(returns_series), 'Market Risk', lookback_days))
     
-    # Relative Risk Metrics
+    # relative risk
     metrics.append(('Beta', calculate_beta(port_returns, bench_returns), 'Relative Risk', lookback_days))
     metrics.append(('Tracking_Error', calculate_tracking_error(port_returns, bench_returns), 'Relative Risk', lookback_days))
     metrics.append(('Information_Ratio', calculate_information_ratio(port_returns, bench_returns), 'Relative Risk', lookback_days))
     metrics.append(('Active_Return', calculate_active_return(port_returns, bench_returns), 'Relative Risk', lookback_days))
     
-    # Concentration Metrics (not time-dependent)
+    # concentration metrics
     metrics.append(('HHI_Security', calculate_hhi(holdings), 'Concentration', None))
     metrics.append(('HHI_Sector', calculate_sector_hhi(holdings), 'Concentration', None))
     
-    # Duration Metrics (not time-dependent)
-    metrics.append(('DV01', calculate_dv01(bond_holdings), 'Duration', None))
+    # # Duration Metrics (not time-dependent)
+    # metrics.append(('DV01', calculate_dv01(bond_holdings), 'Duration', None))
     
     # Store in database
     with get_conn() as cn:
@@ -382,21 +312,19 @@ def calculate_and_store_all_metrics(asof_date=None):
             )
         cn.commit()
         
-        # Refresh the Power BI table (risk_metrics_latest) if stored procedure exists
-        try:
-            cursor.execute("EXEC sp_refresh_risk_metrics_latest")
-            cn.commit()
-        except:
-            pass  # Stored procedure may not exist
+        #(FLAG): what is this for?
+        # try:
+        #     cursor.execute("EXEC sp_refresh_risk_metrics_latest")
+        #     cn.commit()
+        # except:
+        #     pass 
     
     print(f"Stored {len(metrics)} risk metrics for {asof_date}")
     return metrics
 
 def main():
-    """Calculate metrics for latest date"""
     metrics = calculate_and_store_all_metrics()
     
-    # Print summary
     print("\n=== Risk Metrics Summary ===")
     for name, value, category, lookback in metrics:
         if value is not None:

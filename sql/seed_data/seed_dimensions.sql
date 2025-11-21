@@ -1,12 +1,7 @@
--- Dimension Tables Seed Data
--- Master data for securities and benchmarks
 USE RiskDemo;
 GO
 
--- ============================================================================
--- DIM_SECURITIES
--- Portfolio holdings master data
--- ============================================================================
+"(FLAG): not needed for now"
 INSERT INTO dim_securities (security_id, ticker, name, sleeve, sector, base_ccy) VALUES
 (1, 'AAPL', 'Apple Inc', 'Equity', 'Tech', 'USD'),
 (2, 'MSFT', 'Microsoft Corp', 'Equity', 'Tech', 'USD'),
@@ -22,10 +17,6 @@ INSERT INTO dim_securities (security_id, ticker, name, sleeve, sector, base_ccy)
 (12, 'CORP5', 'US Corp 5Y', 'Bond', 'US Bonds', 'USD');
 GO
 
--- ============================================================================
--- DIM_BENCHMARKS
--- Benchmark ETFs master data
--- ============================================================================
 CREATE TABLE dim_benchmarks (
     benchmark_id INT PRIMARY KEY,
     ticker VARCHAR(20) NOT NULL,

@@ -12,8 +12,15 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from src.core.utils_db import get_conn
+import src.core.auth as auth
 
 st.set_page_config(page_title="Portfolio IPS", layout="wide")
+
+_rl = getattr(auth, 'require_login', None)
+if not callable(_rl):
+    st.error("Authentication helper not available. Please restart the app.")
+    st.stop()
+_rl(st)
 
 st.title("Portfolio Investment Policy Statement")
 st.markdown("""
@@ -21,8 +28,8 @@ Define your portfolio strategy using a systematic approach.
 We'll generate recommended allocations with sector tilts and explanations.
 """)
 
-# Get user_id from session
-user_id = st.session_state.get('user_id', 1)
+# Get user_id from session (no default)
+user_id = st.session_state.get('user_id')
 
 def load_ips_responses(user_id):
     """Load user's existing IPS responses from database"""

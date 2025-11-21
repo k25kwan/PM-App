@@ -1,18 +1,10 @@
--- Core Portfolio and Benchmark Schema
--- Historical price, position, and return tracking for portfolio and benchmark
 USE RiskDemo;
 GO
 
--- ============================================================================
--- PORTFOLIO TABLES
--- ============================================================================
-
--- Historical portfolio positions and returns
 CREATE TABLE historical_portfolio_info (
   id BIGINT IDENTITY PRIMARY KEY,
   ticker NVARCHAR(32),
   date DATE,
-  -- Pipeline columns used by rebalancing logic
   trade_quantity DECIMAL(18,4) NULL,
   quantity_change DECIMAL(18,4) NULL,
   trade_action NVARCHAR(32) NULL,
@@ -27,7 +19,6 @@ CREATE TABLE historical_portfolio_info (
 );
 GO
 
--- Current portfolio positions snapshot
 CREATE TABLE f_positions (
   asof_date DATE,
   security_id INT,
@@ -44,7 +35,6 @@ CREATE TABLE f_positions (
 );
 GO
 
--- Securities master dimension
 CREATE TABLE dim_securities (
   security_id INT PRIMARY KEY,
   ticker NVARCHAR(32),
@@ -55,7 +45,6 @@ CREATE TABLE dim_securities (
 );
 GO
 
--- Date dimension for calendar and business day tracking
 CREATE TABLE dim_dates (
   date DATE PRIMARY KEY,
   year INT,
@@ -69,11 +58,7 @@ CREATE TABLE dim_dates (
 );
 GO
 
--- ============================================================================
--- BENCHMARK TABLES
--- ============================================================================
 
--- Benchmark securities master dimension
 CREATE TABLE dim_benchmarks (
   benchmark_id INT PRIMARY KEY,
   ticker NVARCHAR(32),
@@ -84,7 +69,6 @@ CREATE TABLE dim_benchmarks (
 );
 GO
 
--- Historical benchmark prices and returns
 CREATE TABLE historical_benchmark_info (
     id BIGINT IDENTITY PRIMARY KEY,
     ticker NVARCHAR(32),

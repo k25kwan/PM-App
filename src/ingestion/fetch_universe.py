@@ -1,8 +1,4 @@
-"""
-Ticker Universe Loader
-Fetches comprehensive lists of tradeable securities from external sources
-Caches results to avoid repeated API calls
-"""
+# (FLAG): is this file being used? this is the older code that does not just load from the s&p500
 
 import pandas as pd
 import requests
@@ -10,7 +6,6 @@ from pathlib import Path
 from datetime import datetime, timedelta
 import json
 
-# Cache directory
 CACHE_DIR = Path(__file__).parent.parent.parent / "data"
 CACHE_DIR.mkdir(exist_ok=True)
 
@@ -19,7 +14,6 @@ CACHE_METADATA = CACHE_DIR / "universe_metadata.json"
 
 
 def is_cache_valid(max_age_days=7):
-    """Check if cached universe is still fresh"""
     if not UNIVERSE_CACHE.exists() or not CACHE_METADATA.exists():
         return False
     
@@ -36,10 +30,6 @@ def is_cache_valid(max_age_days=7):
 
 
 def fetch_nasdaq_listed_stocks():
-    """
-    Fetch all NASDAQ-listed stocks from NASDAQ FTP
-    Free, no API key required, updated daily
-    """
     url = "ftp://ftp.nasdaqtrader.com/SymbolDirectory/nasdaqlisted.txt"
     
     try:

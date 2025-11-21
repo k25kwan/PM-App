@@ -15,13 +15,18 @@ sys.path.insert(0, str(project_root))
 
 from src.core.utils_db import get_conn
 from src.core.benchmark_utils import get_portfolio_benchmark_composition, get_benchmark_name
+import src.core.auth as auth
 
 st.set_page_config(page_title="Add Portfolio", layout="wide")
 
 st.title("Portfolio Management")
 
-# Get user_id from session
-user_id = st.session_state.get('user_id', 1)
+_rl = getattr(auth, 'require_login', None)
+if not callable(_rl):
+    st.error("Authentication helper not available. Please restart the app.")
+    st.stop()
+_rl(st)
+user_id = st.session_state.get('user_id')
 
 def load_user_portfolios(user_id):
     """Load all portfolios for this user"""

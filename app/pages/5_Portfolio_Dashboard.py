@@ -18,14 +18,19 @@ sys.path.insert(0, str(project_root))
 
 from src.core.utils_db import get_conn
 from src.core.benchmark_utils import get_portfolio_benchmark_composition, get_benchmark_name
+import src.core.auth as auth
 import yfinance as yf
 
 st.set_page_config(page_title="Portfolio Dashboard", layout="wide")
 
 st.title("Portfolio Dashboard")
 
-# Get user_id from session
-user_id = st.session_state.get('user_id', 1)
+_rl = getattr(auth, 'require_login', None)
+if not callable(_rl):
+    st.error("Authentication helper not available. Please restart the app.")
+    st.stop()
+_rl(st)
+user_id = st.session_state.get('user_id')
 
 def load_user_portfolios(user_id):
     """Load all portfolios for a user"""
@@ -60,8 +65,9 @@ def load_portfolio_composition(portfolio_id, as_of_date=None):
                     FROM f_positions
                     WHERE portfolio_id = ?
                     AND asof_date = (SELECT MAX(asof_date) FROM f_positions WHERE portfolio_id = ?)
+                    AND portfolio_id IN (SELECT id FROM portfolios WHERE user_id = ?)
                 """
-                df = pd.read_sql(query, cn, params=[portfolio_id, portfolio_id])
+                df = pd.read_sql(query, cn, params=[portfolio_id, portfolio_id, user_id])
             else:
                 query = """
                     SELECT 
@@ -74,8 +80,9 @@ def load_portfolio_composition(portfolio_id, as_of_date=None):
                     FROM f_positions
                     WHERE portfolio_id = ?
                     AND asof_date = ?
+                    AND portfolio_id IN (SELECT id FROM portfolios WHERE user_id = ?)
                 """
-                df = pd.read_sql(query, cn, params=[portfolio_id, as_of_date])
+                df = pd.read_sql(query, cn, params=[portfolio_id, as_of_date, user_id])
             
             return df
     except Exception as e:
@@ -97,8 +104,9 @@ def load_performance_data(portfolio_id, start_date=None, end_date=None):
                     market_value
                 FROM historical_portfolio_info
                 WHERE portfolio_id = ?
+                AND portfolio_id IN (SELECT id FROM portfolios WHERE user_id = ?)
             """
-            params = [portfolio_id]
+            params = [portfolio_id, user_id]
             
             if start_date:
                 query += " AND date >= ?"

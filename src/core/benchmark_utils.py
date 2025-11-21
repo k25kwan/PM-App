@@ -1,10 +1,4 @@
-"""
-Benchmark Mapping Utilities
-Maps portfolio sectors to appropriate benchmark indices
-"""
-
-# Sector-to-Benchmark mapping
-# Each sector is matched to a representative index/ETF
+# each sector is matched to a representative index/ETF
 SECTOR_BENCHMARK_MAPPING = {
     "Tech": "QQQ",           # Invesco QQQ Trust (Nasdaq-100)
     "Technology": "QQQ",     # Alternative naming
@@ -53,32 +47,15 @@ SECTOR_BENCHMARK_MAPPING = {
 }
 
 def get_benchmark_for_sector(sector):
-    """
-    Get the benchmark ticker for a given sector
-    
-    Args:
-        sector (str): Sector name
-        
-    Returns:
-        str: Benchmark ticker symbol, or SPY as default
-    """
+# get benchmark ticker for a given sector, SPY is default
     return SECTOR_BENCHMARK_MAPPING.get(sector, "SPY")
 
 def get_portfolio_benchmark_composition(portfolio_holdings):
-    """
-    Calculate benchmark composition based on portfolio sector weights
-    
-    Args:
-        portfolio_holdings (DataFrame): Portfolio holdings with 'sector' and 'market_value' columns
-        
-    Returns:
-        dict: {benchmark_ticker: weight} mapping
-    """
-    # Calculate sector weights
+    # calculate sector weights
     total_value = portfolio_holdings['market_value'].sum()
     sector_weights = portfolio_holdings.groupby('sector')['market_value'].sum() / total_value
     
-    # Map sectors to benchmarks
+    # map sectors to benchmarks
     benchmark_weights = {}
     for sector, weight in sector_weights.items():
         benchmark = get_benchmark_for_sector(sector)
@@ -90,7 +67,6 @@ def get_portfolio_benchmark_composition(portfolio_holdings):
     return benchmark_weights
 
 def get_benchmark_name(ticker):
-    """Get display name for benchmark ticker"""
     benchmark_names = {
         "QQQ": "Nasdaq-100",
         "XLY": "Consumer Discretionary",
